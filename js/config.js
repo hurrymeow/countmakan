@@ -32,7 +32,9 @@ export const COOLDOWN_MS = 10 * 60 * 1000;
 export const RETRY_DELAY_MS = 2000;
 
 // Caps paid output. A 10-item answer with sugar, fibre, sodium and a question is about 900 tokens.
-export const MAX_OUTPUT_TOKENS = 1500;
+// DeepSeek counts reasoning against this cap, and a photo can reason for 1,000+ tokens first.
+// 1,500 cut answers off. 4,000 leaves room and still costs well under a cent.
+export const MAX_OUTPUT_TOKENS = 4000;
 
 export const THUMB_MAX_PX = 200;
 
