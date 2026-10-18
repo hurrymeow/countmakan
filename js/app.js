@@ -205,6 +205,18 @@ function dismissSheet() {
   else resetAdd();
 }
 
+function openPhoto(src) {
+  $('#photo-view-img').src = src;
+  $('#photo-view').showModal();
+}
+
+// Any tap closes it. Back and Escape close it natively.
+function initPhotoView() {
+  const view = $('#photo-view');
+  view.addEventListener('click', () => view.close());
+  view.addEventListener('close', () => $('#photo-view-img').removeAttribute('src'));
+}
+
 function initSheet() {
   const sheet = $('#sheet');
   sheet.addEventListener('cancel', (ev) => {
@@ -700,7 +712,10 @@ function drawEditor() {
         el('button', { type: 'button', class: 'btn primary', id: 'save-meal', onclick: saveDraft }, d.isNew ? 'Save meal' : 'Save changes'),
         el('button', { type: 'button', class: 'btn', onclick: closeEditor }, d.isNew ? "Don't save" : 'Cancel'),
         items.length ? el('button', { type: 'button', class: 'btn fav-btn', id: 'fav-toggle', 'aria-pressed': String(isFav), 'aria-label': isFav ? 'Remove from favourites' : 'Save as a favourite', title: isFav ? 'Remove from favourites' : 'Save as a favourite', onclick: toggleFav }, isFav ? '★' : '☆') : null)),
-    state.photoUrl || d.thumb ? el('img', { class: 'editor-photo', src: state.photoUrl || d.thumb, alt: 'Your meal' }) : null,
+    state.photoUrl || d.thumb
+      ? el('button', { type: 'button', class: 'photo-zoom', 'aria-label': 'Show the full photo', onclick: () => openPhoto(state.photoUrl || d.thumb) },
+        el('img', { class: 'editor-photo', src: state.photoUrl || d.thumb, alt: 'Your meal' }))
+      : null,
     d.ask ? questionCard(d.ask) : null,
     el('p', { class: 'muted' }, 'If a portion looks wrong, change the grams. The other numbers update by themselves.'),
     items.length ? items : el('p', { class: 'empty' }, 'No food in this meal. Add one below.'),
@@ -1242,6 +1257,7 @@ async function boot() {
   $('#retry').addEventListener('click', () => runEstimate());
   $('#start-over').addEventListener('click', resetAdd);
   initSheet();
+  initPhotoView();
   $('#save-keys').addEventListener('click', () => {
     const first = !hasKeys();
     state.keys = saveKeys(readKeyInputs());

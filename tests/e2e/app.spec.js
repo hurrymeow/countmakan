@@ -87,6 +87,20 @@ test.describe('with keys', () => {
     expect(calls).toEqual(['gemini-3.8-flash']);
   });
 
+  test('tapping the editor photo shows it full screen, any tap closes it', async ({ page }) => {
+    await mockModels(page, { 'gemini-3.8-flash': OK });
+    await open(page);
+    await photoEstimate(page);
+    await page.getByRole('button', { name: 'Show the full photo' }).click();
+    const view = page.locator('#photo-view');
+    await expect(view).toBeVisible();
+    await expect(view.locator('img')).toHaveAttribute('src', /^blob:/);
+    if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/photo-view.png` });
+    await view.getByRole('button', { name: 'Close' }).click();
+    await expect(view).toBeHidden();
+    await expect(page.locator('#sheet')).toBeVisible();
+  });
+
   test('choosing another photo before sending costs no call', async ({ page }) => {
     const calls = await mockModels(page, { 'gemini-3.8-flash': OK });
     await open(page);
