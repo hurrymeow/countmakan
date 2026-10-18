@@ -241,6 +241,12 @@
     <div class="card" id="editor" hidden></div>
   </dialog>
 
+  <!-- Full photo, opened by tapping the photo in the editor -->
+  <dialog class="photo-view" id="photo-view" aria-label="Your meal photo">
+    <img id="photo-view-img" alt="Your meal">
+    <button type="button" class="btn" id="photo-view-close">Close</button>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite" hidden>
     <span id="toast-text"></span>
     <button type="button" class="btn" id="toast-action" hidden>Undo</button>
