@@ -3,8 +3,14 @@
     "SessionStart": [
       {
         "matcher": "startup",
-        "hooks": [{ "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/sync-default.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/sync-default.sh"
+          }
+        ]
       }
     ]
-  }
+  },
+  "model": "opusplan"
 }
