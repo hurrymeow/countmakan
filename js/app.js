@@ -1200,12 +1200,19 @@ async function onImport(ev) {
 // installed app (turisfasih on hurrymeow.github.io). The page prompt checks scope correctly.
 let installEvent = null;
 const INSTALL_DECLINED = 'countmakan.installDeclined';
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches;
 
 function renderInstall() {
   let declined = false;
   try { declined = localStorage.getItem(INSTALL_DECLINED) === '1'; } catch { /* storage blocked */ }
-  $('#install').hidden = !installEvent || declined || isStandalone();
+  // iOS never fires beforeinstallprompt, so show the manual steps instead.
+  const ios = !installEvent && isIOS();
+  $('#install').hidden = !(installEvent || ios) || declined || isStandalone();
+  $('#install-yes').hidden = ios;
+  $('#install-text').textContent = ios
+    ? 'Tap the Share button in Safari, then "Add to Home Screen".'
+    : 'Open it like any other app. It works without internet too.';
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -1279,6 +1286,7 @@ async function boot() {
   $('#export').addEventListener('click', onExport);
   $('#import').addEventListener('change', onImport);
   $('#install-yes').addEventListener('click', onInstall);
+  renderInstall();
   $('#install-no').addEventListener('click', onDeclineInstall);
   $('#share-app').addEventListener('click', onShareApp);
   $('#health-connect').addEventListener('click', () => onHealthSignIn('Connected to Google Health ✓'));
