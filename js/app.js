@@ -1,72 +1,25 @@
 import { CHAIN, DEFAULT_TARGETS, THUMB_MAX_PX, KEEP_MAX_PX, MODEL_MAX_PX, MODEL_JPEG_QUALITY, PROVIDER_LABELS, OPTIONAL_PROVIDERS } from './config.js';
 import { estimate, testKey, applyOrder, stepId } from './chain.js';
-import { totals, scaleItem, scaleBy, normalizeItem, mealTitle } from './schema.js';
-import { loadFavs, saveFavs, favFromEntry, favRefs, mergeFavs, favKcal, bumpFav } from './favs.js';
+import { totals } from './schema.js';
+import { loadFavs, saveFavs, favRefs, mergeFavs, favKcal } from './favs.js';
 import { parseSetupFragment, buildSetupLink, loadKeys, saveKeys, maskKey, PROVIDERS } from './keys.js';
 import { buildExport, parseImport, localDay } from './io.js';
 import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
-import { foodIconSvg } from './food-icons.js';
-import { ringSvg, weekChartSvg, daySeries, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
+import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
+import { $, el, fmt, uid, MACRO_KEYS, MACRO_NAMES, dot, hasKeys, state, setStatus, toast } from './ui.js';
+import { LOW_CONFIDENCE, draftSnap, openEditor, closeEditor, logAgain } from './editor.js';
+import { entryRow, renderHistory } from './history.js';
 
-const $ = (sel) => document.querySelector(sel);
 const GOALS = ['kcal', 'protein', 'carbs', 'fat', 'sugar', 'fibre', 'sodium'];
 const GOAL_LABELS = {
   kcal: 'Calories', protein: 'Protein (g)', carbs: 'Carbs (g)', fat: 'Fat (g)',
   sugar: 'Sugar limit (g)', fibre: 'Fibre (g)', sodium: 'Sodium limit (mg)',
 };
-// Portion buttons: share of the meal as first shown, short label, spoken label.
-const PORTIONS = [[0.5, '½', 'Half'], [0.75, '¾', 'Three quarters'], [1, 'All', 'All of it'], [1.5, '1½', 'One and a half'], [2, '2×', 'Double']];
-const LOW_CONFIDENCE = 0.6;
 const SLOW_MS = 30000;
-const UNDO_MS = 8000;
-
-const state = {
-  keys: {},
-  targets: { ...DEFAULT_TARGETS },
-  entries: [],
-  photo: null, // { mime, base64, bytes, keep, thumb }
-  order: [], // saved provider order, as step ids. Empty means the default CHAIN order.
-  photoUrl: '', // object URL for the open entry's full photo
-  draft: null, // entry being edited
-  draftSnap: '', // draft as opened, to tell if anything changed
-  step: 'add',
-  favs: [],
-  answers: [], // [{ q, a }] for the follow-up question
-  abort: null, // AbortController for the running estimate
-  health: { waiting: 0, needsSignIn: false, error: '' },
-  healthRange: 7, // Days for "Send past meals". Null means all.
-  healthBusy: false,
-};
-
-function el(tag, attrs = {}, ...kids) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') n.className = v;
-    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
-  }
-  for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : String(k));
-  return n;
-}
-
-const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('en');
-const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-const MACRO_KEYS = ['protein', 'carbs', 'fat'];
-const MACRO_NAMES = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
-const dot = (m) => el('span', { class: `dot ${m}`, 'aria-hidden': 'true' });
-// "● Protein 12 g · ● Carbs 30 g · ● Fat 8 g", each macro in its own colour.
-const macroLine = (t) => MACRO_KEYS.flatMap((m, i) => [i ? ' · ' : '', el('span', { class: 'nowrap' }, dot(m), `${MACRO_NAMES[m]} ${fmt(t[m])} g`)]);
-const extraLine = (t) => `Sugar ${fmt(t.sugar)} g · Fibre ${fmt(t.fibre)} g · Sodium ${fmt(t.sodium)} mg`;
-const hasKeys = () => PROVIDERS.some((p) => state.keys[p]);
-
-function setStatus(node, msg, isError = false) {
-  node.textContent = msg;
-  node.classList.toggle('error', isError);
-}
 
 const ORDER_KEY = 'countmakan.order';
 const chain = () => applyOrder(CHAIN, state.order);
@@ -98,32 +51,6 @@ function loadTargets() {
   }
 }
 
-// ---------- Toast ----------
-let toastTimer;
-function toast(text, { action, onAction, ms = 4000 } = {}) {
-  clearTimeout(toastTimer);
-  $('#toast-text').textContent = text;
-  const btn = $('#toast-action');
-  btn.hidden = !action;
-  btn.textContent = action || '';
-  btn.onclick = action
-    ? () => {
-      hideToast();
-      onAction();
-    }
-    : null;
-  // An open sheet sits in the top layer, so the toast moves inside it to stay visible.
-  const host = $('#sheet').open ? $('#sheet') : document.body;
-  if ($('#toast').parentNode !== host) host.append($('#toast'));
-  $('#toast').hidden = false;
-  toastTimer = setTimeout(hideToast, ms);
-}
-
-function hideToast() {
-  clearTimeout(toastTimer);
-  $('#toast').hidden = true;
-}
-
 // ---------- Setup link ----------
 function consumeSetupLink() {
   const keys = parseSetupFragment(location.hash);
@@ -134,7 +61,7 @@ function consumeSetupLink() {
 }
 
 // ---------- Tabs ----------
-function showTab(name) {
+export function showTab(name) {
   for (const b of document.querySelectorAll('nav button')) {
     if (b.dataset.tab === name) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
@@ -147,7 +74,7 @@ function showTab(name) {
 // ---------- Today: which step is showing ----------
 // One step at a time: add, compose, loading, failure or editor.
 const SHEET_STEPS = { compose: 'Add a meal', failure: 'Something went wrong', editor: 'Check your meal' };
-function showStep(step) {
+export function showStep(step) {
   state.step = step;
   for (const id of ['add', 'compose', 'loading', 'failure', 'editor']) $(`#${id}`).hidden = id !== step;
   showSheet(SHEET_STEPS[step]);
@@ -189,10 +116,6 @@ function sheetDirty() {
   return false;
 }
 
-function draftSnap(d) {
-  return JSON.stringify([d.items, d.ts]);
-}
-
 // Back, Esc, a tap above the sheet or a swipe down. Asks first if work would be lost.
 function dismissSheet() {
   const step = state.step;
@@ -205,7 +128,7 @@ function dismissSheet() {
   else resetAdd();
 }
 
-function openPhoto(src) {
+export function openPhoto(src) {
   $('#photo-view-img').src = src;
   $('#photo-view').showModal();
 }
@@ -246,7 +169,7 @@ function initSheet() {
   grab.addEventListener('pointercancel', end);
 }
 
-function resetAdd() {
+export function resetAdd() {
   state.photo = null;
   state.draft = null;
   state.answers = [];
@@ -319,93 +242,13 @@ function renderSummary() {
 }
 
 // ---------- Meal lists ----------
-function foodIcon(items, text) {
-  const n = el('span', { class: 'ph', 'aria-hidden': 'true' });
-  n.innerHTML = foodIconSvg(items, text);
-  return n;
-}
-
-function entryRow(e) {
-  const t = totals(e.items);
-  const { title, more } = mealTitle(e.items, e.text);
-  const time = new Date(e.ts).toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' });
-  return el('li', {},
-    el('button', { type: 'button', class: 'entry', 'aria-label': `${title}${more ? ` and ${more} more` : ''}, ${fmt(t.kcal)} calories, at ${time}. Tap to see all items.`, onclick: () => openEditor(structuredClone(e)) },
-      e.thumb ? el('img', { src: e.thumb, alt: '' }) : foodIcon(e.items, e.text),
-      el('span', { class: 'meta' }, el('span', { class: 'name' }, title), el('span', { class: 'time' }, more ? `${time} · +${more} more` : time)),
-      el('span', { class: 'cal' }, fmt(t.kcal), el('small', {}, ' kcal'))));
-}
-
-function renderToday() {
+export function renderToday() {
   const today = localDay(new Date());
   const list = state.entries.filter((e) => e.day === today);
   $('#today-list').replaceChildren(...(list.length ? list.map(entryRow) : [el('li', { class: 'empty' }, 'No meals yet today. Your first one will show up here.')]));
   renderFavs();
   renderSummary();
   if (!$('#add').hidden || !$('#welcome').hidden || !$('#not-set-up').hidden) showStep('add');
-}
-
-// Last 7 days as bars against the calorie goal. Tap a bar for that day.
-function weekCard() {
-  const today = localDay(new Date());
-  const series = daySeries(state.entries, today, 7).map((d) => ({
-    ...d, label: new Date(`${d.day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short' }),
-  }));
-  const goal = state.targets.kcal;
-  const logged = series.filter((d) => d.logged);
-  const avg = logged.length ? logged.reduce((a, d) => a + d.kcal, 0) / logged.length : 0;
-  const summary = logged.length
-    ? `About ${fmt(avg)} calories a day, on ${logged.length} day${logged.length > 1 ? 's' : ''} with meals.`
-    : 'No meals in the last 7 days.';
-  const caption = el('p', { class: 'wk-caption', 'aria-live': 'polite' }, summary);
-  const describe = (d) => {
-    const date = new Date(`${d.day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
-    if (!d.logged) return `${date}: no meals saved.`;
-    const diff = d.kcal - goal;
-    return `${date}: ${fmt(d.kcal)} calories, ${diff > 0 ? `${fmt(diff)} over` : `${fmt(-diff)} under`} your goal.`;
-  };
-  const chart = el('div', { class: 'wk-wrap' });
-  chart.innerHTML = weekChartSvg(series, goal, today);
-  let active = null;
-  const select = (hit) => {
-    active?.classList.remove('active');
-    active = hit;
-    hit?.classList.add('active');
-    caption.textContent = hit ? describe(series[hit.dataset.i]) : summary;
-  };
-  for (const hit of chart.querySelectorAll('.wk-hit')) {
-    hit.addEventListener('pointerenter', (ev) => { if (ev.pointerType === 'mouse') select(hit); });
-    hit.addEventListener('click', () => {
-      select(hit);
-      document.getElementById(`day-${series[hit.dataset.i].day}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
-  chart.addEventListener('pointerleave', (ev) => { if (ev.pointerType === 'mouse') select(null); });
-  return el('div', { class: 'card' },
-    el('h2', {}, 'Last 7 days'),
-    chart,
-    caption);
-}
-
-function renderHistory() {
-  const byDay = new Map();
-  for (const e of state.entries) {
-    if (!byDay.has(e.day)) byDay.set(e.day, []);
-    byDay.get(e.day).push(e);
-  }
-  const cards = [...byDay.entries()].map(([day, list]) => {
-    const t = totals(list.flatMap((e) => e.items));
-    const label = new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-    return el('div', { class: 'card', id: `day-${day}` },
-      el('div', { class: 'day-head' }, el('h2', {}, label), el('span', { class: 'day-total' }, `${fmt(t.kcal)} calories`)),
-      el('div', { class: 'muted' }, macroLine(t)),
-      el('ul', { class: 'entries' }, list.map(entryRow)));
-  });
-  $('#history').replaceChildren(...(cards.length
-    ? [weekCard(), ...cards]
-    : [el('div', { class: 'card empty' },
-      el('p', {}, 'No meals saved yet. Once you save some, you\'ll see a chart of your week here.'),
-      el('button', { type: 'button', class: 'btn primary', id: 'history-add', onclick: () => showTab('today') }, 'Add your first meal'))]));
 }
 
 // ---------- Favourites ----------
@@ -418,40 +261,8 @@ function favRow(f) {
       el('span', { class: 'cal' }, fmt(kcal))));
 }
 
-function renderFavs() {
+export function renderFavs() {
   $('#fav-list').replaceChildren(...state.favs.map(favRow));
-}
-
-// Starts a new meal from a favourite or a past meal. No API call.
-function logAgain(src) {
-  openEditor({
-    id: uid(),
-    ts: new Date().toISOString(),
-    items: structuredClone(src.items),
-    provider: src.provider || '',
-    model: src.model || '',
-    source: 'repeat',
-    text: src.text || '',
-    thumb: src.thumb || '',
-    favId: state.favs.some((f) => f.id === src.id) ? src.id : src.favId,
-    isNew: true,
-  });
-}
-
-function toggleFav() {
-  const d = state.draft;
-  const had = state.favs.some((f) => f.id === d.favId);
-  const next = had ? state.favs.filter((f) => f.id !== d.favId) : [favFromEntry(d, d.favId || uid()), ...state.favs];
-  try {
-    state.favs = saveFavs(next);
-  } catch {
-    toast('The phone is full. Remove a favourite first.');
-    return;
-  }
-  d.favId = had ? undefined : next[0].id;
-  renderFavs();
-  renderEditor();
-  toast(had ? 'Removed from favourites.' : 'Saved as a favourite ★');
 }
 
 // ---------- Add a meal ----------
@@ -607,7 +418,7 @@ function cancelEstimate() {
   showStep('compose');
 }
 
-function answerQuestion(a) {
+export function answerQuestion(a) {
   const answer = String(a || '').trim();
   if (!answer) return;
   state.answers = [{ q: state.draft.ask.question, a: answer }];
@@ -621,218 +432,13 @@ function showFailure({ text, details }) {
   showStep('failure');
 }
 
-// ---------- Editor ----------
-function toLocalInput(iso) {
-  const d = new Date(iso);
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
-}
-
-function openEditor(entry) {
-  // base is the meal at "All". The portion buttons scale from it, so taps never compound.
-  entry.portion = 1;
-  entry.base = structuredClone(entry.items);
-  state.draft = entry;
-  state.draftSnap = draftSnap(entry);
-  if (state.photoUrl) URL.revokeObjectURL(state.photoUrl);
-  state.photoUrl = entry.photo ? URL.createObjectURL(entry.photo) : '';
-  showTab('today');
-  renderEditor();
-  showStep('editor');
-}
-
-function closeEditor() {
-  state.draft = null;
-  if (state.photoUrl) URL.revokeObjectURL(state.photoUrl);
-  state.photoUrl = '';
-  $('#editor').replaceChildren();
-  resetAdd();
-}
-
-function field(id, label, value, onChange, cls = '') {
-  return el('div', { class: cls },
-    el('label', { for: id }, label),
-    el('input', { id, type: 'number', inputmode: 'decimal', min: '0', step: 'any', value, onchange: (ev) => onChange(ev.target.value) }));
-}
-
-// Replacing a focused input fires blur, then change, which would re-enter here.
-let rendering = false;
-function renderEditor() {
-  if (rendering) return;
-  rendering = true;
-  try {
-    drawEditor();
-  } finally {
-    rendering = false;
-  }
-}
-
-function drawEditor() {
-  const d = state.draft;
-  const items = d.items.map((it, i) => {
-    const update = (f) => (v) => {
-      d.items[i] = f === 'grams' ? scaleItem(it, v) : normalizeItem({ ...it, [f]: v });
-      d.base[i] = scaleBy(d.items[i], 1 / d.portion);
-      renderEditor();
-    };
-    const id = (f) => `item-${i}-${f}`;
-    return el('div', { class: 'item' },
-      el('label', { for: id('name') }, 'Food'),
-      el('input', { id: id('name'), value: it.name, onchange: (ev) => { d.items[i] = { ...d.items[i], name: ev.target.value }; d.base[i] = { ...d.base[i], name: ev.target.value }; } }),
-      el('details', { class: 'item-note' },
-        el('summary', {}, it.detail ? 'Note' : 'Add note'),
-        el('input', { id: id('detail'), value: it.detail || '', 'aria-label': 'Note', placeholder: 'e.g. fried, with chilli', onchange: (ev) => {
-          const detail = ev.target.value.trim();
-          d.items[i] = { ...d.items[i], detail: detail || undefined };
-          d.base[i] = { ...d.base[i], detail: detail || undefined };
-        } })),
-      it.confidence < LOW_CONFIDENCE ? el('span', { class: 'badge' }, 'Please check this') : null,
-      el('div', { class: 'item-cals' },
-        field(id('grams'), 'Grams', it.grams, update('grams')),
-        field(id('kcal'), 'Calories', it.kcal, update('kcal'))),
-      el('div', { class: 'item-macros' },
-        field(id('protein'), 'Protein g', it.protein, update('protein'), 'm-protein'),
-        field(id('carbs'), 'Carbs g', it.carbs, update('carbs'), 'm-carbs'),
-        field(id('fat'), 'Fat g', it.fat, update('fat'), 'm-fat')),
-      el('div', { class: 'item-macros' },
-        field(id('sugar'), 'Sugar g', it.sugar, update('sugar')),
-        field(id('fibre'), 'Fibre g', it.fibre, update('fibre')),
-        field(id('sodium'), 'Sodium mg', it.sodium, update('sodium'))),
-      el('button', { type: 'button', class: 'btn danger', 'aria-label': `Remove this food: ${it.name}`, onclick: () => { d.items.splice(i, 1); d.base.splice(i, 1); renderEditor(); } }, 'Remove this food'));
-  });
-  const t = totals(d.items);
-  const isFav = state.favs.some((f) => f.id === d.favId);
-  $('#editor').replaceChildren(...[
-    el('h2', {}, d.isNew ? "Here's what we found" : 'Change this meal'),
-    el('div', { class: 'editor-summary' },
-      el('p', { class: 'total', id: 'editor-total' }, `Total: ${fmt(t.kcal)} calories`),
-      el('p', { class: 'total-sub' }, macroLine(t)),
-      el('p', { class: 'total-sub', id: 'editor-extra' }, extraLine(t)),
-      el('div', { class: 'editor-actions' },
-        el('button', { type: 'button', class: 'btn primary', id: 'save-meal', onclick: saveDraft }, d.isNew ? 'Save meal' : 'Save changes'),
-        el('button', { type: 'button', class: 'btn', onclick: closeEditor }, d.isNew ? "Don't save" : 'Cancel'),
-        items.length ? el('button', { type: 'button', class: 'btn fav-btn', id: 'fav-toggle', 'aria-pressed': String(isFav), 'aria-label': isFav ? 'Remove from favourites' : 'Save as a favourite', title: isFav ? 'Remove from favourites' : 'Save as a favourite', onclick: toggleFav }, isFav ? '★' : '☆') : null)),
-    state.photoUrl || d.thumb
-      ? el('button', { type: 'button', class: 'photo-zoom', 'aria-label': 'Show the full photo', onclick: () => openPhoto(state.photoUrl || d.thumb) },
-        el('img', { class: 'editor-photo', src: state.photoUrl || d.thumb, alt: 'Your meal' }))
-      : null,
-    d.ask ? questionCard(d.ask) : null,
-    el('p', { class: 'muted' }, 'If a portion looks wrong, change the grams. The other numbers update by themselves.'),
-    items.length ? items : el('p', { class: 'empty' }, 'No food in this meal. Add one below.'),
-    el('button', { type: 'button', class: 'btn', onclick: () => { const it = normalizeItem({ name: 'Food', confidence: 1 }); d.items.push(it); d.base.push(scaleBy(it, 1 / d.portion)); renderEditor(); } }, '+ Add another food'),
-    items.length ? portionRow(d) : null,
-    el('label', { for: 'entry-time' }, 'Time eaten'),
-    el('input', { id: 'entry-time', type: 'datetime-local', value: toLocalInput(d.ts), onchange: (ev) => { if (ev.target.value) d.ts = new Date(ev.target.value).toISOString(); } }),
-    d.isNew ? null : el('button', { type: 'button', class: 'btn', id: 'eat-again', onclick: () => logAgain(d) }, 'I ate this again'),
-    d.isNew ? null : el('button', { type: 'button', class: 'btn danger', onclick: deleteDraft }, 'Delete this meal'),
-    d.scan ? el('p', { class: 'muted scan-details', id: 'scan-details' }, `Scan: ${d.scan}`) : null,
-  ].flat().filter(Boolean));
-}
-
-function portionRow(d) {
-  return el('div', { class: 'portion' },
-    el('p', { class: 'portion-label', id: 'portion-label' }, d.isNew ? 'How much did you eat?' : 'Change the amount'),
-    el('div', { class: 'portion-btns', role: 'group', 'aria-labelledby': 'portion-label' },
-      PORTIONS.map(([p, label, spoken]) => el('button', {
-        type: 'button',
-        class: 'btn',
-        'aria-pressed': String(d.portion === p),
-        'aria-label': spoken,
-        onclick: () => {
-          d.portion = p;
-          d.items = d.base.map((it) => scaleBy(it, p));
-          renderEditor();
-        },
-      }, label))));
-}
-
-function questionCard(ask) {
-  const other = el('input', { id: 'ask-other', placeholder: 'Or type your answer', enterkeyhint: 'send' });
-  other.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') answerQuestion(other.value); });
-  return el('div', { class: 'ask', id: 'ask' },
-    el('p', { class: 'ask-title' }, 'One quick question'),
-    el('p', { class: 'ask-q' }, ask.question),
-    el('div', { class: 'ask-choices' }, ask.choices.map((c) => el('button', { type: 'button', class: 'btn', onclick: () => answerQuestion(c) }, c))),
-    el('label', { for: 'ask-other' }, 'Something else?'),
-    other,
-    el('button', { type: 'button', class: 'btn', onclick: () => answerQuestion(other.value) }, 'Send answer'),
-    el('p', { class: 'muted' }, 'Not sure? Skip this and save.'));
-}
-
-async function saveDraft() {
-  const d = state.draft;
-  const sends = health.isOn() && (d.isNew || state.entries.find((x) => x.id === d.id)?.gh);
-  // Ask for a fresh token now, while the Save tap still allows the popup.
-  const token = sends && !health.validToken() ? health.getToken().catch(() => null) : null;
-  // Commit an edit that is still focused, so its change event runs first.
-  document.activeElement?.blur?.();
-  const { isNew, ...entry } = state.draft;
-  // Editor-only state. Not saved.
-  for (const k of ['ask', 'base', 'portion']) delete entry[k];
-  entry.day = localDay(entry.ts);
-  entry.updatedAt = new Date().toISOString();
-  const prev = state.entries.find((x) => x.id === entry.id);
-  if (isNew ? health.isOn() : prev?.gh) {
-    // Custom food logs can't be edited, so an edit replaces the old log.
-    if (prev?.gh?.name) health.queueDelete(prev.gh.name, { ripeNow: true });
-    entry.gh = { state: 'pending' };
-  }
-  await db.putEntry(entry);
-  state.entries = await db.allEntries();
-  if (isNew && state.favs[0]?.id !== entry.favId && state.favs.some((f) => f.id === entry.favId)) {
-    try {
-      state.favs = saveFavs(bumpFav(state.favs, entry.favId));
-      renderFavs();
-    } catch { /* Order is a nicety. Keep the old one if storage is full. */ }
-  }
-  closeEditor();
-  renderToday();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  toast(isNew ? 'Meal saved ✓' : 'Changes saved ✓');
-  await token;
-  await syncHealth();
-  // Background sends can't open the sign-in popup, so ask for a tap.
-  if (showSyncCard()) {
-    toast(`${isNew ? 'Meal saved' : 'Changes saved'}. Not in Google Health yet.`, {
-      action: 'Send', ms: 10000, onAction: onHealthSendCard,
-    });
-  }
-}
-
-async function deleteDraft() {
-  const id = state.draft.id;
-  const saved = state.entries.find((e) => e.id === id);
-  if (saved?.gh?.name) {
-    health.queueDelete(saved.gh.name);
-    setTimeout(syncHealth, health.DELETE_DELAY_MS + 500);
-  }
-  await db.deleteEntry(id);
-  state.entries = await db.allEntries();
-  closeEditor();
-  renderToday();
-  toast('Meal deleted.', {
-    action: 'Undo',
-    ms: UNDO_MS,
-    onAction: async () => {
-      // If the remote delete already went out, send the meal again.
-      const name = saved.gh?.name;
-      await db.putEntry(name && !health.unqueueDelete(name) ? { ...saved, gh: { state: 'pending' } } : saved);
-      state.entries = await db.allEntries();
-      renderToday();
-      if (!$('#tab-history').hidden) renderHistory();
-      toast('Meal is back ✓');
-      syncHealth();
-    },
-  });
-}
-
 // ---------- Google Health ----------
-const showSyncCard = () => health.isOn() && state.health.needsSignIn && state.health.waiting > 0;
+export const showSyncCard = () => health.isOn() && state.health.needsSignIn && state.health.waiting > 0;
 const changes = (n) => (n === 1 ? '1 meal is' : `${n} meals are`);
 const meals = (n) => (n === 1 ? '1 meal' : `${n} meals`);
 const RANGES = [[7, '7 days'], [30, '30 days'], [null, 'All']];
 
-async function syncHealth() {
+export async function syncHealth() {
   if (!health.isOn()) return;
   state.health = await health.sync({
     entries: state.entries,
@@ -922,7 +528,7 @@ async function onHealthSignIn(okText) {
   toast(state.health.error ? `Google Health: ${state.health.error}` : okText);
 }
 
-async function onHealthSendCard() {
+export async function onHealthSendCard() {
   if (!(await sendNow())) return;
   toast(state.health.error ? `Google Health: ${state.health.error}` : 'Sent to Google Health ✓');
 }
