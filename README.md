@@ -42,7 +42,7 @@ Defined in `js/config.js`. Logic never names a model.
 | 2 | Gemini | `gemini-3.5-flash-lite` |
 | 3 | DeepSeek | `deepseek-flash` |
 
-DeepSeek is paid, so it goes last. Its answer is capped at 1,500 tokens.
+DeepSeek is paid, so it goes last. Its answer is capped at 4,000 tokens (`MAX_OUTPUT_TOKENS`), because it counts reasoning against the cap.
 
 This is the default order. Settings → Setup → Provider order moves a step up or down. The order is saved in localStorage (`countmakan.order`) as `provider:model` ids. A model added to `CHAIN` later joins after the saved ones. "Reset order" goes back to the default.
 
