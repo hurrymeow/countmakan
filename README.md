@@ -111,7 +111,7 @@ npm ci
 npm run lint    # eslint
 npm run check   # node --check on every file
 npm test        # node:test unit tests
-npm run e2e     # Playwright, mocked APIs (not in CI yet)
+npm run e2e     # Playwright, mocked APIs (runs in CI)
 ```
 Serve locally with any static server, e.g. `python3 -m http.server`.
 
