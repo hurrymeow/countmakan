@@ -25,7 +25,7 @@ async function tx(mode, fn) {
     const t = db.transaction(STORE, mode);
     const s = t.objectStore(STORE);
     const result = fn(s);
-    t.oncomplete = () => resolve(result?.result ?? result);
+    t.oncomplete = () => resolve(result && 'result' in result ? result.result : result);
     t.onerror = () => reject(t.error);
   });
 }
