@@ -171,6 +171,7 @@ function initSheet() {
 
 export function resetAdd() {
   state.photo = null;
+  state.retryPhoto = null;
   state.draft = null;
   state.answers = [];
   $('#preview-img').removeAttribute('src');
@@ -269,14 +270,42 @@ export function renderFavs() {
 async function onPhoto(ev) {
   const file = ev.target.files?.[0];
   ev.target.value = '';
-  if (!file) return;
+  if (file) processPhoto(file);
+}
+
+// Resizing a big phone photo takes a moment, so show the photo and say so.
+let resizing = null;
+async function processPhoto(file) {
+  const job = {};
+  resizing = job;
+  state.retryPhoto = file;
+  const url = URL.createObjectURL(file);
+  $('#loading-img').src = url;
+  $('#loading-photo').hidden = false;
+  setLoading('Resizing photo…', 'Big photos take a few seconds.');
+  setStep('sent', 'now', 'Resizing your photo');
+  setStep('look', 'todo', 'Getting it ready to send');
+  setStep('done', 'todo');
+  $('#elapsed').textContent = '0';
+  const started = performance.now();
+  const tick = setInterval(() => { $('#elapsed').textContent = String(Math.round((performance.now() - started) / 1000)); }, 1000);
+  showStep('loading');
+  $('#cancel-estimate').focus();
   try {
-    state.photo = await prepareImage(file, THUMB_MAX_PX, KEEP_MAX_PX, MODEL_MAX_PX, MODEL_JPEG_QUALITY);
+    const photo = await prepareImage(file, THUMB_MAX_PX, KEEP_MAX_PX, MODEL_MAX_PX, MODEL_JPEG_QUALITY);
+    if (resizing !== job) return;
+    state.photo = photo;
   } catch {
-    showStep(state.photo ? 'compose' : 'add');
-    toast(MSG.photo);
+    if (resizing !== job) return;
+    resizing = null;
+    showFailure({ text: MSG.photo, details: `Could not resize ${file.name || 'photo'} (${file.type || 'unknown type'}, ${Math.round(file.size / 1024)} KB)` });
     return;
+  } finally {
+    clearInterval(tick);
+    URL.revokeObjectURL(url);
   }
+  resizing = null;
+  state.retryPhoto = null;
   $('#preview-img').src = `data:${state.photo.mime};base64,${state.photo.base64}`;
   openCompose(true);
 }
@@ -407,6 +436,11 @@ async function runEstimate() {
 }
 
 function cancelEstimate() {
+  if (resizing) {
+    resizing = null;
+    showStep(state.photo ? 'compose' : 'add');
+    return;
+  }
   state.abort?.abort();
   state.abort = null;
   // Stopping a follow-up goes back to the first answer, which is still there.
@@ -867,7 +901,7 @@ async function boot() {
   $('#cancel-compose').addEventListener('click', resetAdd);
   $('#estimate').addEventListener('click', onEstimate);
   $('#cancel-estimate').addEventListener('click', cancelEstimate);
-  $('#retry').addEventListener('click', () => runEstimate());
+  $('#retry').addEventListener('click', () => (state.retryPhoto ? processPhoto(state.retryPhoto) : runEstimate()));
   $('#start-over').addEventListener('click', resetAdd);
   initSheet();
   initPhotoView();
