@@ -54,7 +54,11 @@ This is the default order. Settings → Setup → Provider order moves a step up
 
 ## Accuracy
 - Each estimate sends up to 20 portions from the user's favourites as references (name, grams, kcal). The newest favourite wins on a name clash. Favourites are portions the user has checked, so they ground repeat dishes.
-- HPB's food composition database was the first choice for a reference table. It isn't reachable from the build container, and dish values weren't copied from memory. Revisit if a verified table becomes available.
+- Every estimate also gets a table of 45 hawker plates measured in a lab (`js/dishes.js`). The source is [Yeo et al. 2021, *Foods* 10(7):1659](https://doi.org/10.3390/foods10071659), licensed CC BY 4.0. It has 15 Chinese, 15 Malay and 15 Indian dishes, one plate each from a Kopitiam food court.
+  - It gives portion grams, energy (measured by NIR), protein, fat, carbs and sodium (by ICP-MS). It has no sugar or fibre.
+  - The table keeps the paper's per-100 g values (Tables 1-3) and works out each plate from them. The paper's per-plate tables (4-6) disagree in three rows: Yang Zhou fried rice, Mee soto and Original appam.
+  - A portion the user confirmed as a favourite outranks the table.
+- HPB's SG FoodID has wider coverage, but its terms forbid redistribution. Using it would need written permission from HPB.
 - Sugar is total sugars. Fibre is dietary fibre. Sodium is in mg.
 - Default goals: sugar 50 g, fibre 25 g, sodium 2,000 mg. Sodium follows the [WHO](https://www.who.int/news-room/fact-sheets/detail/salt-reduction) limit of under 2,000 mg a day. The WHO sugar limit (under 10% of energy, about 50 g at 2,000 kcal) is for free sugars, so a total-sugar bar runs high on fruit and milk. Fibre is a goal to reach, so going past it isn't shown as over.
 - Meals saved before this change have no sugar, fibre or sodium. They count as zero.
