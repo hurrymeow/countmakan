@@ -1,75 +1,73 @@
-// Macro tower on Today. Pure functions: history in, SVG markup out. No stored state.
-// A finished day with calories in the goal band adds one floor. The floor's material is
-// the macro closest to its target, or gold when all four land. Off days add nothing and
-// take nothing away, and totals above target never count for more.
+// Macro tower. Pure functions: history in, floor data out. No stored state.
+// Every finished day with logged food lays one floor. The floor is split left to right
+// into protein, carbs and fat by each macro's share of that day's calories. A day outside
+// the goal band still lays a floor, but it renders messy. Tonight's floor is today, live.
 import { totals } from './schema.js';
 import { onTarget } from './charts.js';
-import {
-  MATERIALS, MATERIAL_LABEL, MATERIAL_HINT, MATERIAL_SWATCH, GROUND_Y, ROOF, CX, TOWER_W, PODIUM_H,
-  floorArt, SKY, GROUND, SKYLINE, MILESTONES, STAGE_NAME, LOBBY, FOUNDATION, garden, spire, beacon,
-} from './tower-art.js';
 
-// Floors needed for each skyline tier after the bare one.
+export const SHOPS = [
+  ['sport', 'boxing', 'pool', 'dojo'],
+  ['office', 'bakery', 'noodle', 'pizza'],
+  ['butch', 'fish', 'deli', 'nut'],
+];
+export const MILESTONES = [
+  { key: 'lobby', at: 5, name: 'Lobby' },
+  { key: 'garden', at: 20, name: 'Rooftop garden' },
+  { key: 'spire', at: 60, name: 'Spire' },
+  { key: 'beacon', at: 100, name: 'Beacon' },
+];
+export const STAGE_NAME = ['Empty lot', 'Foundation', 'Low rise', 'Mid rise', 'High rise', 'Skyscraper'];
 export const SKYLINE_AT = [3, 14, 45];
-// Tallest the floors stack before they start to shrink to fit the scene.
-const MAX_FLOOR_H = 14;
-// Height for the podium and floors together, which leaves room above for the roof pieces.
-const TOWER_SPACE = 100;
+export const MAX_WALKERS = 3;
 
-const MACRO_MATERIAL = { protein: 'steel', carbs: 'brick', fat: 'glass' };
+// Kcal per gram, so shares follow calories and fat is not understated.
+const KCAL_PER_G = { protein: 4, carbs: 4, fat: 9 };
 
-// Which material a day earns, or null when calories miss the band.
-export function dayMaterial(t, targets) {
-  if (!(targets.kcal > 0) || !onTarget(t.kcal, targets.kcal)) return null;
-  const hit = ['kcal', 'protein', 'carbs', 'fat'].every((k) => onTarget(t[k], targets[k]));
-  if (hit) return 'gold';
-  let best = null;
-  let gap = Infinity;
-  for (const m of Object.keys(MACRO_MATERIAL)) {
-    if (!(targets[m] > 0)) continue;
-    const g = Math.abs(t[m] - targets[m]) / targets[m];
-    if (g < gap) { gap = g; best = m; }
-  }
-  return best ? MACRO_MATERIAL[best] : null;
+export function macroShare(t) {
+  const kc = { protein: t.protein * KCAL_PER_G.protein, carbs: t.carbs * KCAL_PER_G.carbs, fat: t.fat * KCAL_PER_G.fat };
+  const sum = kc.protein + kc.carbs + kc.fat;
+  if (!(sum > 0)) return { protein: 1 / 3, carbs: 1 / 3, fat: 1 / 3 };
+  return { protein: kc.protein / sum, carbs: kc.carbs / sum, fat: kc.fat / sum };
 }
 
-// `today` is a YYYY-MM-DD string. Today is skipped because the day is not over.
+// Stable string hash (FNV-1a), so a day always gets the same shops.
+export function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+// One shop per macro, picked from the day's hash.
+export function pickShops(day) {
+  const h = hash(day);
+  return SHOPS.map((list, i) => list[Math.floor(h / 4 ** i) % list.length]);
+}
+
+function floorFor(day, meals, targets, live = false) {
+  const t = totals(meals.flatMap((e) => e.items));
+  const messy = !live && targets.kcal > 0 && !onTarget(t.kcal, targets.kcal);
+  return {
+    day, share: macroShare(t), shops: pickShops(day), messy, kcal: t.kcal, live,
+    walkers: messy || live ? 0 : Math.min(MAX_WALKERS, meals.length),
+  };
+}
+
+// `today` is a YYYY-MM-DD string. Floors come oldest first. `tonight` is null until a meal is logged.
 export function towerModel(entries, targets, today) {
   const byDay = new Map();
   for (const e of entries) {
-    if (!e.items?.length || e.day >= today) continue;
-    byDay.set(e.day, (byDay.get(e.day) || []).concat(e.items));
+    if (!e.items?.length) continue;
+    byDay.set(e.day, (byDay.get(e.day) || []).concat([e]));
   }
-  const floors = [...byDay.keys()].sort()
-    .map((d) => dayMaterial(totals(byDay.get(d)), targets))
-    .filter(Boolean);
-  const n = floors.length;
-  const counts = Object.fromEntries(MATERIALS.map((m) => [m, floors.filter((f) => f === m).length]));
-  const built = MILESTONES.filter((m) => n >= m.at);
-  const next = MILESTONES.find((m) => n < m.at) || null;
-  const skyline = SKYLINE_AT.filter((t) => n >= t).length;
-  const stage = n === 0 ? 0 : 1 + skyline + (n >= 100 ? 1 : 0);
-  return { floors, count: n, counts, built: built.map((m) => m.key), next, skyline, stageName: STAGE_NAME[stage], days: byDay.size };
+  const floors = [...byDay.keys()].filter((d) => d < today).sort().map((d) => floorFor(d, byDay.get(d), targets));
+  const tonight = byDay.has(today) ? floorFor(today, byDay.get(today), targets, true) : null;
+  const count = floors.length;
+  const skyline = SKYLINE_AT.filter((n) => count >= n).length;
+  const stage = count === 0 ? 0 : 1 + skyline + (count >= 100 ? 1 : 0);
+  const built = MILESTONES.filter((m) => count >= m.at).map((m) => m.key);
+  const next = MILESTONES.find((m) => count < m.at) || null;
+  return { floors, tonight, count, stage, stageName: STAGE_NAME[stage], skyline, built, next };
 }
 
-export function towerSvg(m) {
-  const lobby = m.built.includes('lobby');
-  const base = lobby ? PODIUM_H : 0;
-  const fh = Math.min(MAX_FLOOR_H, (TOWER_SPACE - base) / Math.max(m.count, 1));
-  const x = CX - TOWER_W / 2;
-  const floors = m.floors.map((mat, i) => floorArt(mat, x, GROUND_Y - base - (i + 1) * fh, TOWER_W, fh)).join('');
-  const top = GROUND_Y - base - m.count * fh;
-  let roof = '';
-  if (m.count) {
-    let y = top;
-    for (const [key, art] of [['garden', garden], ['spire', spire], ['beacon', beacon]]) {
-      if (!m.built.includes(key)) continue;
-      roof += art(y);
-      y -= ROOF[key].h - ROOF[key].lap;
-    }
-  }
-  const label = m.count ? `Tower with ${m.count} ${m.count === 1 ? 'floor' : 'floors'}, ${m.stageName.toLowerCase()}` : 'Empty lot';
-  return `<svg class="tower" viewBox="0 0 360 200" role="img" aria-label="${label}">${SKY}${SKYLINE[m.skyline]}${GROUND}${m.count ? (lobby ? LOBBY : FOUNDATION) : ''}${floors}${roof}</svg>`;
-}
-
-export const legend = (m) => MATERIALS.map((k) => ({ key: k, label: MATERIAL_LABEL[k], hint: MATERIAL_HINT[k], count: m.counts[k], color: MATERIAL_SWATCH(k) }));
+export const headerText = (m) => (m.count
+  ? `${m.stageName} · ${m.count} ${m.count === 1 ? 'floor' : 'floors'}${m.next ? ` · ${m.next.name} at ${m.next.at}` : ''}`
+  : 'Log a full day to lay the first floor.');

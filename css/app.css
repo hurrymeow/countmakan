@@ -452,9 +452,49 @@ body:has(.sheet[open]) { overflow: hidden; }
 .sheet .editor-summary { position: sticky; top: var(--s-6); z-index: 1; background: var(--surface); padding-top: var(--s-2); }
 
 /* Macro tower */
-.tower-wrap { border-radius: var(--r); overflow: hidden; }
-.tower { display: block; width: 100%; height: auto; }
-.tower-caption { text-align: center; font-size: .875rem; margin-top: var(--s-2); }
-.tower-legend { list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-2); margin: var(--s-3) 0 0; padding: 0; font-size: .75rem; }
-.tower-legend li { display: flex; align-items: center; gap: var(--s-2); }
-.tower-legend i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.tower-stack { position: relative; width: 100%; }
+.seg { display: flex; overflow: hidden; flex: none; height: 100%; }
+.seg img, .roof img { display: block; flex: none; max-width: none; }
+.floor { position: relative; display: flex; overflow: hidden; margin: 0 auto; box-shadow: inset 3px 0 0 #2d3244, inset -3px 0 0 #2d3244; }
+.slab { display: block; margin: 0 auto; background: url(../img/tower/shops/slab.png) center / cover; border-radius: 1px; }
+.roof { display: flex; justify-content: center; align-items: flex-end; }
+.ground { display: block; height: 40px; background: #16181d; }
+.walker { position: absolute; bottom: 3px; animation: tower-walk linear infinite; animation-play-state: paused; }
+.walker img { position: absolute; bottom: 0; height: 100%; max-width: none; }
+.walker img:nth-child(1) { animation: tower-blink .5s steps(1) infinite reverse; }
+.walker img:nth-child(2) { animation: tower-blink .5s steps(1) infinite; }
+.in-view .walker, .in-view .walker img { animation-play-state: running; }
+@keyframes tower-blink { 0% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes tower-walk { from { transform: translateX(-60px); } to { transform: translateX(var(--w, 320px)); } }
+.dim { position: absolute; inset: 0; background: rgb(20 10 30 / .45); }
+.mess { position: absolute; }
+.floor.tonight { opacity: .6; outline: 2px dashed #ffd166; outline-offset: -2px; }
+.floor.tonight.empty { background: rgb(255 209 102 / .06); }
+@media (prefers-reduced-motion: reduce) { .walker, .walker img { animation: none !important; } .walker img:nth-child(2) { display: none; } }
+
+/* Today scene */
+.scene {
+  position: relative; display: block; width: calc(100% + 2 * var(--s-6)); margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) 0;
+  height: 296px; padding: var(--s-6); overflow: hidden; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: linear-gradient(#0d1230, #2b2655 70%, #8a5a6e); border: 0; border-radius: var(--r) var(--r) 0 0;
+}
+.scene:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.scene-date { position: absolute; z-index: 2; top: var(--s-6); left: var(--s-6); display: block; color: #e6e6f0; text-shadow: 0 1px 4px rgb(0 0 0 / .5); }
+.scene-tower { position: absolute; z-index: 1; top: 60px; right: var(--s-6); width: calc(100% - 152px - var(--s-6) * 2 - var(--s-2)); }
+.scene-fade { position: absolute; z-index: 1; inset: auto 0 0; height: 110px; background: linear-gradient(transparent, var(--surface)); pointer-events: none; }
+.scene .ring-wrap { position: absolute; z-index: 2; left: var(--s-6); top: 56px; border-radius: 50%; background: rgb(14 14 24 / .72); backdrop-filter: blur(6px); }
+.scene .hero-status { position: absolute; z-index: 2; left: var(--s-6); bottom: var(--s-6); margin: 0; }
+.scene-stats { display: flex; gap: var(--s-4); flex-wrap: wrap; margin: var(--s-3) 0 var(--s-6); color: var(--text-2); font-size: .875rem; }
+@media (max-width: 374px) {
+  .scene-tower { width: calc(100% - 128px - var(--s-6) * 2 - var(--s-2)); }
+}
+
+/* Tap-in tower view */
+.tower-view { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; padding: 0; border: 0; background: #0a0a0a; color: var(--text); overflow: hidden; }
+.tower-view[open] { display: flex; flex-direction: column; }
+.tower-view::backdrop { background: #0a0a0a; }
+.tower-head { display: flex; justify-content: space-between; align-items: center; padding: var(--s-3) var(--s-4); background: rgb(10 10 10 / .92); border-bottom: 1px solid var(--border); flex: none; }
+.tower-head h2 { margin: 0; font-size: 1.0625rem; }
+.tower-close { width: 44px; height: 44px; font-size: 1.5rem; line-height: 1; background: none; border: 0; color: var(--text-2); cursor: pointer; }
+.tower-scroll { flex: 1; overflow-y: auto; background: linear-gradient(#0d1230, #2b2655 80%, #8a5a6e); padding-top: var(--s-6); overscroll-behavior: contain; }
+.tower-scroll .floor, .tower-scroll .slab { content-visibility: auto; contain-intrinsic-size: auto var(--fh, 104px); }

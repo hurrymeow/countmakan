@@ -1,64 +1,86 @@
-// All tower artwork lives here. Placeholder SVG; swap this one file for real art.
-// The scene is 360 x 200. The ground is y=180 and the tower is centred on x=180.
-// Every export returns SVG markup, so the model in tower.js never touches colour or shape.
-// Sprites are PNGs in img/tower/. The vector shapes below are the fallback for floors too short to show a sprite.
+// Tower rendering. Floor data in, HTML out. Sprites live in img/tower/shops/.
+// A floor is three clipped segments (protein, carbs, fat). Each segment leads with its shop's
+// signature prop so a narrow share still reads as that shop, then adds the door edge when
+// there is room, then tiles the middle piece to fill.
+import { hash } from './tower.js';
 
-export const MATERIALS = ['steel', 'brick', 'glass', 'gold'];
-export const MATERIAL_LABEL = { steel: 'Steel', brick: 'Brick', glass: 'Glass', gold: 'Gold' };
-export const MATERIAL_HINT = { steel: 'protein', brick: 'carbs', glass: 'fat', gold: 'all four' };
-
-export const GROUND_Y = 180;
-export const CX = 180;
-export const TOWER_W = 52;
-
-const PAL = {
-  steel: { base: '#5b8fd6', win: '#cfe3ff' },
-  brick: { base: '#c9582b', win: '#ffd9a8' },
-  glass: { base: '#2fb5a3', win: '#e0fff9' },
-  gold: { base: '#f2b824', win: '#fff6cf' },
+const DIR = 'img/tower/shops/';
+// Native sprite sizes [w, h] per shop and piece.
+const flat = { edge: [131, 108], sig: [298, 108], mid: [302, 108] };
+const tall = (sig, h = 111) => ({ edge: [133, h], sig: [sig, h], mid: [40, h] });
+export const SIZES = {
+  sport: flat, office: flat, butch: { edge: [131, 108], sig: [106, 108], mid: [302, 108] },
+  boxing: tall(306), pool: tall(306), dojo: tall(305), bakery: tall(306), noodle: tall(305), pizza: tall(298, 112),
+  fish: tall(306), deli: tall(305), nut: tall(306),
 };
+export const SPRITES = [
+  ...Object.keys(SIZES).flatMap((k) => ['edge', 'sig', 'mid'].map((p) => `${k}-${p}`)),
+  'mess-ceiling', 'mess-clutter', 'mess-tape', 'roof-wide', 'lobby-wide', 'slab', 'sky',
+  ...['gym', 'kid', 'off1', 'off2', 'off3', 'old1', 'old2', 'rider', 'shop1', 'shop2', 'shop3'].map((n) => `p-${n}`),
+];
+// Floor aspect: the tower floors are drawn about 3.6 times wider than tall.
+export const FLOOR_RATIO = 3.64;
 
-const IMG = 'img/tower/';
-const image = (name, x, y, w, h, ratio = 'none') => `<image href="${IMG}${name}.png" x="${x}" y="${y.toFixed(2)}" width="${w}" height="${h.toFixed(2)}" preserveAspectRatio="${ratio}"/>`;
-// Below this height a sprite turns to mush, so the floor falls back to a flat strip.
-const SPRITE_MIN_H = 5;
+const PEOPLE = [['off1', 'off2'], ['shop1', 'shop2'], ['old1', 'old2'], ['gym', 'gym'], ['kid', 'kid'], ['rider', 'rider'], ['shop3', 'shop2'], ['off3', 'off2']];
+const img = (name, style = '', cls = '') => `<img src="${DIR}${name}.png" alt=""${cls ? ` class="${cls}"` : ''} style="${style}" draggable="false">`;
 
-// One floor. Tall floors use the sprite. Short ones get a dashed window strip.
-export function floorArt(material, x, y, w, h) {
-  if (h >= SPRITE_MIN_H) return image(material, x, y, w, h + 0.4);
-  const p = PAL[material];
-  const strip = h >= 2.4 ? `<line x1="${x + 5}" x2="${x + w - 5}" y1="${y + h / 2}" y2="${y + h / 2}" stroke="${p.win}" stroke-opacity=".8" stroke-width="${Math.min(4, h * 0.4).toFixed(2)}" stroke-dasharray="4 3"/>` : '';
-  return `<rect x="${x}" y="${y.toFixed(2)}" width="${w}" height="${(h + 0.4).toFixed(2)}" fill="${p.base}"/>${strip}`;
+function segmentHtml(kind, w, H) {
+  const sz = SIZES[kind];
+  const s = H / sz.sig[1];
+  const pieces = ['sig'];
+  let used = sz.sig[0] * s;
+  if (used + sz.edge[0] * s < w) { pieces.unshift('edge'); used += sz.edge[0] * s; }
+  while (used < w) { pieces.push('mid'); used += sz.mid[0] * s; }
+  return `<div class="seg" style="width:${w}px">${pieces.map((p) => img(`${kind}-${p}`, `height:${H}px`)).join('')}</div>`;
 }
 
-export const MATERIAL_SWATCH = (m) => PAL[m].base;
+function walkersHtml(floor, seed, H) {
+  let out = '';
+  for (let i = 0; i < floor.walkers; i++) {
+    const p = PEOPLE[(seed + i * 3) % PEOPLE.length];
+    const x = ((seed * 37 + i * 41) % 80) + 5;
+    const dur = 9 + ((seed + i) % 5) * 2;
+    out += `<div class="walker" style="left:${x}%;height:${(H * 0.5).toFixed(1)}px;animation-duration:${dur}s;animation-delay:-${(i * 3 + seed) % dur}s">${img(`p-${p[0]}`)}${img(`p-${p[1]}`)}</div>`;
+  }
+  return out;
+}
 
-// Sky and ground behind everything.
-export const SKY = `<image href="${IMG}sky.png" width="360" height="200" preserveAspectRatio="none"/>`;
-export const GROUND = `<rect y="${GROUND_Y}" width="360" height="20" fill="#16181d"/><rect y="${GROUND_Y}" width="360" height="2" fill="#2c303a"/>`;
+function messHtml(seed, H) {
+  const px = (n) => n.toFixed(1);
+  return `<span class="dim"></span>`
+    + img('mess-ceiling', `left:${18 + (seed % 40)}%;top:0;height:${px(H * 0.32)}px`, 'mess')
+    + img('mess-clutter', `left:${8 + (seed % 30)}%;bottom:2px;height:${px(H * 0.45)}px`, 'mess')
+    + img('mess-clutter', `left:${58 + (seed % 20)}%;bottom:2px;height:${px(H * 0.38)}px;transform:scaleX(-1)`, 'mess')
+    + img('mess-tape', `left:40%;top:${px(H * 0.35)}px;height:${px(H * 0.3)}px`, 'mess');
+}
 
-// Skyline backdrop, three tiers that swap in as the tower grows. Tier 0 is bare sky.
-const skyline = (n, h) => `<image href="${IMG}skyline${n}.png" y="${GROUND_Y - h}" width="360" height="${h}"/>`;
-export const SKYLINE = ['', skyline(1, 143), skyline(2, 143), skyline(3, 173)];
+export const slabHtml = (W, H) => `<span class="slab" style="width:${W + 8}px;height:${Math.max(4, Math.round(H * 0.09))}px"></span>`;
 
-// Milestones. `at` is the floor count that unlocks each. Listed in order.
-export const MILESTONES = [
-  { key: 'lobby', at: 5, name: 'Lobby' },
-  { key: 'garden', at: 20, name: 'Rooftop garden' },
-  { key: 'spire', at: 60, name: 'Spire' },
-  { key: 'beacon', at: 100, name: 'Beacon' },
-];
-export const STAGE_NAME = ['Empty lot', 'Foundation', 'Low rise', 'Mid rise', 'High rise', 'Skyscraper'];
+// One floor at width W and height H, with the slab below it.
+export function floorHtml(floor, W, H) {
+  const seed = hash(floor.day);
+  const cls = ['floor', floor.live ? 'tonight' : '', floor.messy ? 'messy' : ''].filter(Boolean).join(' ');
+  const keys = ['protein', 'carbs', 'fat'];
+  let used = 0;
+  const segs = keys.map((k, i) => {
+    const w = i === 2 ? W - used : Math.round(W * floor.share[k]);
+    used += w;
+    return segmentHtml(floor.shops[i], w, H);
+  }).join('');
+  const body = segs + (floor.messy ? messHtml(seed, H) : walkersHtml(floor, seed, H));
+  return `<div class="${cls}" style="width:${W}px;height:${H}px;--w:${W}px">${body}</div>${slabHtml(W, H)}`;
+}
 
-// Podium with entrance. Sits under the first floor once the lobby is built.
-export const PODIUM_W = 72;
-export const PODIUM_H = 46;
-export const LOBBY = image('lobby', CX - PODIUM_W / 2, GROUND_Y - PODIUM_H, PODIUM_W, PODIUM_H);
-// Used before the lobby: a plain slab.
-export const FOUNDATION = `<rect x="${CX - TOWER_W / 2 - 3}" y="${GROUND_Y - 3}" width="${TOWER_W + 6}" height="3" fill="#8a8f9c"/>`;
+// Tonight before any meal is logged: an empty dashed floor.
+export const emptyTonightHtml = (W, H) => `<span class="floor tonight empty" style="width:${W}px;height:${H}px"></span>${slabHtml(W, H)}`;
 
-// Roof pieces, stacked bottom to top. Each takes the y of its bottom edge and has a height `h`.
-export const ROOF = { garden: { w: 52, h: 36, lap: 3 }, spire: { w: 12, h: 30, lap: 2 }, beacon: { w: 18, h: 18, lap: 5 } };
-export const garden = (y) => image('garden', CX - ROOF.garden.w / 2, y - ROOF.garden.h, ROOF.garden.w, ROOF.garden.h);
-export const spire = (y) => image('spire', CX - ROOF.spire.w / 2, y - ROOF.spire.h, ROOF.spire.w, ROOF.spire.h);
-export const beacon = (y) => image('beacon', CX - ROOF.beacon.w / 2, y - ROOF.beacon.h, ROOF.beacon.w, ROOF.beacon.h, 'xMidYMid meet');
+export const roofHtml = (W) => `<div class="roof">${img('roof-wide', `width:${W}px`)}</div>`;
+export const lobbyHtml = (W) => `<div class="roof">${img('lobby-wide', `width:${W}px;display:block`)}</div>`;
+
+// Roof, tonight, then floors newest first. `limit` caps how many past floors are drawn.
+export function towerHtml(m, W, H, { limit = Infinity, ground = false } = {}) {
+  const newest = m.floors.slice(-Math.min(limit, m.floors.length)).reverse();
+  const parts = [roofHtml(Math.round(W * 1.0)), m.tonight ? floorHtml(m.tonight, W, H) : emptyTonightHtml(W, H), ...newest.map((f) => floorHtml(f, W, H))];
+  if (ground) parts.push(lobbyHtml(W), '<span class="ground"></span>');
+  return parts.join('');
+}
