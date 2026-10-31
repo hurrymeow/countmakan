@@ -8,6 +8,7 @@ import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
+import { hawkerModel, hawkerSvg } from './hawker.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
 import { $, el, fmt, uid, MACRO_KEYS, MACRO_NAMES, dot, hasKeys, state, setStatus, toast } from './ui.js';
@@ -242,6 +243,21 @@ function renderSummary() {
   ].filter(Boolean));
 }
 
+function renderHawker() {
+  const m = hawkerModel(state.entries);
+  const wrap = el('div', { class: 'hawker-wrap' });
+  wrap.insertAdjacentHTML('afterbegin', hawkerSvg(m));
+  $('#hawker').replaceChildren(
+    el('h2', {}, 'Your hawker centre'),
+    wrap,
+    el('div', { class: 'muted hawker-caption' }, m.days ? `${m.eraName} · ${m.days} ${m.days === 1 ? 'day' : 'days'} logged${m.balanced ? ' · well-rounded menu' : ''}` : 'Log a meal to open your first stall.'),
+    el('ul', { class: 'stall-list' }, m.stalls.map((s) =>
+      el('li', { class: `stall-chip lvl-${s.level}` },
+        el('strong', {}, s.label),
+        el('span', {}, s.name),
+        el('span', { class: 'muted' }, s.toNext ? `${s.toNext} more` : s.level ? 'Maxed' : 'Not open')))));
+}
+
 // ---------- Meal lists ----------
 export function renderToday() {
   const today = localDay(new Date());
@@ -249,6 +265,7 @@ export function renderToday() {
   $('#today-list').replaceChildren(...(list.length ? list.map(entryRow) : [el('li', { class: 'empty' }, 'No meals yet today. Your first one will show up here.')]));
   renderFavs();
   renderSummary();
+  renderHawker();
   if (!$('#add').hidden || !$('#welcome').hidden || !$('#not-set-up').hidden) showStep('add');
 }
 

@@ -450,3 +450,12 @@ body:has(.sheet[open]) { overflow: hidden; }
 .sheet > .error-card { background: var(--surface); }
 /* Save and Cancel stay in reach while the foods scroll. */
 .sheet .editor-summary { position: sticky; top: var(--s-6); z-index: 1; background: var(--surface); padding-top: var(--s-2); }
+
+/* Hawker centre */
+.hawker-wrap { border-radius: var(--r); overflow: hidden; }
+.hawker { display: block; width: 100%; height: auto; }
+.hawker-caption { text-align: center; font-size: .875rem; margin-top: var(--s-2); }
+.stall-list { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-2); margin: var(--s-3) 0 0; padding: 0; }
+.stall-chip { display: grid; gap: 2px; font-size: .75rem; text-align: center; color: var(--text-2); }
+.stall-chip strong { color: var(--text); }
+.stall-chip.lvl-0 { opacity: .6; }
