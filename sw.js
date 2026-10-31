@@ -7,7 +7,7 @@ const CACHE = 'countmakan-v2';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png',
   'js/app.js', 'js/ui.js', 'js/editor.js', 'js/history.js', 'js/charts.js', 'js/config.js', 'js/prompt.js', 'js/dishes.js', 'js/schema.js', 'js/errors.js', 'js/chain.js',
-  'js/keys.js', 'js/io.js', 'js/db.js', 'js/image.js', 'js/messages.js', 'js/health.js', 'js/favs.js', 'js/food-icons.js', 'js/tower.js', 'js/tower-art.js', 'js/suggest.js', 'js/providers/gemini.js', 'js/providers/deepseek.js',
+  'js/keys.js', 'js/io.js', 'js/db.js', 'js/image.js', 'js/messages.js', 'js/health.js', 'js/favs.js', 'js/food-icons.js', 'js/tower.js', 'js/tower-art.js', ...['sky', 'skyline1', 'skyline2', 'skyline3', 'steel', 'brick', 'glass', 'gold', 'lobby', 'garden', 'spire', 'beacon'].map((n) => `img/tower/${n}.png`), 'js/suggest.js', 'js/providers/gemini.js', 'js/providers/deepseek.js',
 ];
 
 self.addEventListener('install', (e) => {

@@ -5,15 +5,16 @@
 import { totals } from './schema.js';
 import { onTarget } from './charts.js';
 import {
-  MATERIALS, MATERIAL_LABEL, MATERIAL_HINT, MATERIAL_SWATCH, GROUND_Y, CX, TOWER_W, PODIUM_H,
+  MATERIALS, MATERIAL_LABEL, MATERIAL_HINT, MATERIAL_SWATCH, GROUND_Y, ROOF, CX, TOWER_W, PODIUM_H,
   floorArt, SKY, GROUND, SKYLINE, MILESTONES, STAGE_NAME, LOBBY, FOUNDATION, garden, spire, beacon,
 } from './tower-art.js';
 
 // Floors needed for each skyline tier after the bare one.
 export const SKYLINE_AT = [3, 14, 45];
 // Tallest the floors stack before they start to shrink to fit the scene.
-const MAX_FLOOR_H = 12;
-const TOWER_SPACE = 118;
+const MAX_FLOOR_H = 14;
+// Height for the podium and floors together, which leaves room above for the roof pieces.
+const TOWER_SPACE = 100;
 
 const MACRO_MATERIAL = { protein: 'steel', carbs: 'brick', fat: 'glass' };
 
@@ -54,15 +55,19 @@ export function towerModel(entries, targets, today) {
 export function towerSvg(m) {
   const lobby = m.built.includes('lobby');
   const base = lobby ? PODIUM_H : 0;
-  const fh = Math.min(MAX_FLOOR_H, TOWER_SPACE / Math.max(m.count, 1));
+  const fh = Math.min(MAX_FLOOR_H, (TOWER_SPACE - base) / Math.max(m.count, 1));
   const x = CX - TOWER_W / 2;
   const floors = m.floors.map((mat, i) => floorArt(mat, x, GROUND_Y - base - (i + 1) * fh, TOWER_W, fh)).join('');
   const top = GROUND_Y - base - m.count * fh;
-  const roof = m.count === 0 ? '' : [
-    m.built.includes('garden') ? garden(top) : '',
-    m.built.includes('spire') ? spire(top) : '',
-    m.built.includes('beacon') ? beacon(top) : '',
-  ].join('');
+  let roof = '';
+  if (m.count) {
+    let y = top;
+    for (const [key, art] of [['garden', garden], ['spire', spire], ['beacon', beacon]]) {
+      if (!m.built.includes(key)) continue;
+      roof += art(y);
+      y -= ROOF[key].h - ROOF[key].lap;
+    }
+  }
   const label = m.count ? `Tower with ${m.count} ${m.count === 1 ? 'floor' : 'floors'}, ${m.stageName.toLowerCase()}` : 'Empty lot';
   return `<svg class="tower" viewBox="0 0 360 200" role="img" aria-label="${label}">${SKY}${SKYLINE[m.skyline]}${GROUND}${m.count ? (lobby ? LOBBY : FOUNDATION) : ''}${floors}${roof}</svg>`;
 }
