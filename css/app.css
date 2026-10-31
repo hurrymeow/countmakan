@@ -498,3 +498,5 @@ body:has(.sheet[open]) { overflow: hidden; }
 .tower-close { width: 44px; height: 44px; font-size: 1.5rem; line-height: 1; background: none; border: 0; color: var(--text-2); cursor: pointer; }
 .tower-scroll { flex: 1; overflow-y: auto; background: linear-gradient(#0d1230, #2b2655 80%, #8a5a6e); padding-top: var(--s-6); overscroll-behavior: contain; }
 .tower-scroll .floor, .tower-scroll .slab { content-visibility: auto; contain-intrinsic-size: auto var(--fh, 104px); }
+.tower-empty { margin: 0 var(--s-6) var(--s-4); padding: var(--s-4); text-align: center; color: var(--text-2); background: rgb(14 14 24 / .72); border-radius: var(--r); }
+.tower-empty strong { color: var(--text); }

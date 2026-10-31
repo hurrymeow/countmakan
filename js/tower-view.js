@@ -34,7 +34,8 @@ export function openTower(entries, targets, today, from) {
   const scroll = dlg.querySelector('.tower-scroll');
   dlg.querySelector('.tower-sub').textContent = headerText(m);
   scroll.style.setProperty('--fh', `${H}px`);
-  scroll.innerHTML = `<div class="tower-stack" style="width:${W}px;margin:0 auto">${towerHtml(m, W, H, { ground: true })}</div>`;
+  const empty = m.count === 0 ? '<p class="tower-empty"><strong>Log a meal to start building your tower.</strong><br>Every day you log adds a floor of shops.</p>' : '';
+  scroll.innerHTML = `${empty}<div class="tower-stack" style="width:${W}px;margin:0 auto">${towerHtml(m, W, H, { ground: true })}</div>`;
   dlg.showModal();
   scroll.scrollTop = 0;
   history.pushState({ tower: true }, '');

@@ -76,3 +76,23 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await view.getByRole('button', { name: 'Close tower' }).click();
   await expect(view).toBeHidden();
 });
+
+test('tower: sprites load and the empty tap-in view invites a first meal', async ({ page }) => {
+  const broken = [];
+  page.on('response', (r) => { if (r.url().includes('/img/') && r.status() >= 400) broken.push(r.url()); });
+  await seedKeys(page);
+  await open(page);
+  await seed(page, 3);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await expect(page.locator('#summary .floor img').first()).toBeVisible();
+  expect(await page.locator('#summary .floor img').first().evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true);
+  expect(broken).toEqual([]);
+});
+
+test('tower: empty tap-in view says how to start', async ({ page }) => {
+  await seedKeys(page);
+  await open(page);
+  await page.locator('#summary .scene').click();
+  await expect(page.locator('.tower-view .tower-empty')).toContainText('Log a meal to start building your tower');
+});
