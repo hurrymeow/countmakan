@@ -16,12 +16,15 @@ export const SIZES = {
 export const SPRITES = [
   ...Object.keys(SIZES).flatMap((k) => ['edge', 'sig', 'mid'].map((p) => `${k}-${p}`)),
   'mess-ceiling', 'mess-clutter', 'mess-tape', 'roof-wide', 'lobby-wide', 'slab', 'sky',
-  ...['gym', 'kid', 'off1', 'off2', 'off3', 'old1', 'old2', 'rider', 'shop1', 'shop2', 'shop3'].map((n) => `p-${n}`),
+  ...Object.keys({ gym: 0, office: 0, shopper: 0, old: 0, kid: 0, rider: 0 }).map((n) => `w-${n}`),
 ];
 // Floor aspect: the tower floors are drawn about 3.6 times wider than tall.
 export const FLOOR_RATIO = 3.64;
 
-const PEOPLE = [['off1', 'off2'], ['shop1', 'shop2'], ['old1', 'old2'], ['gym', 'gym'], ['kid', 'kid'], ['rider', 'rider'], ['shop3', 'shop2'], ['off3', 'off2']];
+// Walk strips: [cell width, frame count], drawn 96px tall. Each is one person, frames side by side.
+export const WALKERS = { gym: [46, 4], office: [49, 4], shopper: [44, 4], old: [45, 4], kid: [39, 2], rider: [46, 4] };
+const WALKER_NAMES = Object.keys(WALKERS);
+const STRIP_H = 96;
 const img = (name, style = '', cls = '') => `<img src="${DIR}${name}.png" alt=""${cls ? ` class="${cls}"` : ''} style="${style}" draggable="false">`;
 
 function segmentHtml(kind, w, H) {
@@ -44,9 +47,12 @@ function walkersHtml(floor, seed, H, W) {
   const dur = route / WALK_SPEED;
   let out = '';
   for (let i = 0; i < n; i++) {
-    const p = PEOPLE[(seed + i * 3) % PEOPLE.length];
+    const name = WALKER_NAMES[(seed + i * 3) % WALKER_NAMES.length];
+    const [cw, frames] = WALKERS[name];
+    const h = H * 0.45;
+    const k = h / STRIP_H;
     const delay = -((i + ((seed % 7) / 7)) / n) * dur;
-    out += `<div class="walker" style="height:${(H * 0.45).toFixed(1)}px;animation-duration:${dur.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s"><span>${img(`p-${p[0]}`)}${img(`p-${p[1]}`)}</span></div>`;
+    out += `<div class="walker" style="width:${(cw * k).toFixed(1)}px;height:${h.toFixed(1)}px;--n:${frames};--sw:${(cw * frames * k).toFixed(1)}px;animation-duration:${dur.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s"><span style="background-image:url(${DIR}w-${name}.png)"></span></div>`;
   }
   return out;
 }

@@ -15,7 +15,7 @@ OUT = pathlib.Path(__file__).resolve().parent.parent / 'img' / 'tower' / 'shops'
 KEEP = ['bakery', 'boxing', 'butch', 'deli', 'dojo', 'fish', 'noodle', 'nut', 'office', 'pizza', 'pool', 'sport']
 PIECES = [f'{k}-{p}' for k in KEEP for p in ('edge', 'sig', 'mid')]
 PIECES += ['mess-ceiling', 'mess-clutter', 'mess-tape', 'roof-wide', 'lobby-wide', 'slab', 'sky', 'garden']
-PIECES += [f'p-{n}' for n in ('gym', 'kid', 'off1', 'off2', 'off3', 'old1', 'old2', 'rider', 'shop1', 'shop2', 'shop3')]
+# Walkers are cut by tools/slice-walkers.py.
 LOBBY_H = 162  # about 1.5 floors
 
 
@@ -43,7 +43,8 @@ def despill(im):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob('*.png'):
-        old.unlink()
+        if not old.name.startswith('w-'):
+            old.unlink()
     for name in PIECES:
         im = Image.open(SRC / f'{name}.png').convert('RGBA')
         if name == 'lobby-wide' and im.height > LOBBY_H:
