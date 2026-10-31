@@ -8,6 +8,9 @@ import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
+import { towerModel } from './tower.js';
+import { towerHtml, FLOOR_RATIO } from './tower-art.js';
+import { openTower } from './tower-view.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
 import { $, el, fmt, uid, MACRO_KEYS, MACRO_NAMES, dot, hasKeys, state, setStatus, toast } from './ui.js';
@@ -227,19 +230,37 @@ function renderSummary() {
       el('div', { class: `big-num${over ? ' over' : ''}` }, fmt(t.kcal)),
       el('div', { class: 'ring-unit' }, 'calories')));
   ring.insertAdjacentHTML('afterbegin', ringSvg(t.kcal, goal, macroSplit(t)));
+  const m = towerModel(state.entries, state.targets, today);
+  const slot = el('div', { class: 'scene-tower in-view', 'aria-hidden': 'true' });
+  const openScene = (el) => openTower(state.entries, state.targets, localDay(new Date()), el);
+  const scene = el('div', {
+    role: 'button', tabindex: '0', class: 'scene',
+    'aria-label': `${m.count} ${m.count === 1 ? 'floor' : 'floors'}, ${m.stageName.toLowerCase()}. Open tower`,
+    onclick: (e) => openScene(e.currentTarget),
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScene(e.currentTarget); } },
+  },
+  el('span', { class: 'scene-date' }, new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })),
+  slot, el('span', { class: 'scene-fade' }), ring,
+  t.kcal > 0 ? statusPill(status, over ? 'over' : status === 'On target' ? 'good' : '') : null);
   $('#summary').replaceChildren(...[
-    el('div', { class: 'muted' }, new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })),
-    el('div', { class: 'hero' }, ring,
-      el('div', { class: 'hero-text' },
-        t.kcal > 0 ? statusPill(status, over ? 'over' : status === 'On target' ? 'good' : '') : null,
-        el('div', { class: 'stat-label' }, status === 'On target' ? `±10% of ${fmt(goal)} goal` : `Goal ${fmt(goal)}`),
-        avg?.days >= 3 ? el('div', { class: 'stat-label' }, `${avg.days}-day avg ${fmt(avg.kcal)}`) : null)),
+    scene,
+    el('div', { class: 'scene-stats' },
+      el('span', {}, status === 'On target' ? `±10% of ${fmt(goal)} goal` : `Goal ${fmt(goal)}`),
+      avg?.days >= 3 ? el('span', {}, `${avg.days}-day avg ${fmt(avg.kcal)}`) : null),
     el('div', { class: 'bars' }, MACRO_KEYS.map((m) => bar(m, t[m], state.targets[m]))),
     el('div', { class: 'bars' },
       limitBar('Sugar', t.sugar, state.targets.sugar, 'g'),
       limitBar('Fibre', t.fibre, state.targets.fibre, 'g', true),
       limitBar('Sodium', t.sodium, state.targets.sodium, 'mg')),
   ].filter(Boolean));
+  fillScene(slot, m);
+}
+
+// The scene frames only the top of the tower. Ground shows when every floor fits.
+function fillScene(slot, m) {
+  const W = Math.round(slot.clientWidth) || 190;
+  const H = Math.round(W / FLOOR_RATIO);
+  slot.innerHTML = towerHtml(m, W, H, { limit: 4, ground: m.count <= 4 });
 }
 
 // ---------- Meal lists ----------
