@@ -452,18 +452,8 @@ body:has(.sheet[open]) { overflow: hidden; }
 .sheet .editor-summary { position: sticky; top: var(--s-6); z-index: 1; background: var(--surface); padding-top: var(--s-2); }
 
 /* Bonsai */
-.bonsai-wrap { max-width: 340px; margin: 0 auto; }
-.bonsai { display: block; width: 100%; height: auto; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.bz-trunk, .bz-branch { stroke: var(--text-2); }
-.bz-branch { stroke-width: 2; }
-.bz-leaf { stroke: var(--text-2); stroke-width: 1.2; }
-.bz-leaf.full { stroke: var(--text); fill: rgb(237 237 237 / .1); }
-.bz-leaf.protein { stroke: var(--protein); fill: rgb(57 135 229 / .35); }
-.bz-leaf.brown { stroke: #c8863a; fill: rgb(200 134 58 / .5); }
-.bz-rib { stroke: var(--text-3); stroke-width: .8; }
-.bz-petal { stroke: var(--text); stroke-width: 1; }
-.bz-core { fill: var(--over); stroke: none; }
-.bz-pot { stroke: var(--text-2); stroke-width: 2; }
+.bonsai-wrap { max-width: 300px; margin: 0 auto; }
+.bonsai { display: block; width: 100%; height: auto; }
 .bonsai-caption { text-align: center; font-size: .875rem; margin-top: var(--s-1); }
 .wk-tiles { list-style: none; display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--s-2); margin: var(--s-4) 0 0; padding: 0; }
 .wk-tile { display: grid; justify-items: center; gap: var(--s-1); font-size: .75rem; color: var(--text-3); }

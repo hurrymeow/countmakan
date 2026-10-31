@@ -49,14 +49,14 @@ test('svg is stable between renders and grows with logging', () => {
   const m = bonsaiModel([day('2026-10-10'), day('2026-10-11')], TARGETS, TODAY);
   assert.equal(bonsaiSvg(m), bonsaiSvg(m));
   const more = bonsaiModel([day('2026-10-10'), day('2026-10-11'), day('2026-10-12')], TARGETS, TODAY);
-  const count = (s) => (s.match(/class="bz-leaf/g) || []).length;
+  const count = (s) => (s.match(/<use href="#leaf/g) || []).length;
   assert.equal(count(bonsaiSvg(m)), 2);
   assert.equal(count(bonsaiSvg(more)), 3);
 });
 
 test('empty history still draws a pot', () => {
   const svg = bonsaiSvg(bonsaiModel([], TARGETS, TODAY));
-  assert.match(svg, /bz-pot/);
+  assert.match(svg, /href="#pot"/);
   assert.match(svg, /Log a meal/);
 });
 
