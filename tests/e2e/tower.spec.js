@@ -32,6 +32,7 @@ for (const floors of [3, 14, 45, 120]) {
     await expect(page.locator('#tower svg')).toBeVisible();
     await expect(page.locator('#tower')).toContainText(`${floors} floors`);
     await expect(page.locator('#tower')).not.toContainText(/\b(null|undefined|NaN)\b/);
+    if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/${floors}-days-today.png`, fullPage: true });
     await page.locator('nav').evaluate((n) => { n.style.display = 'none'; });
     await page.locator('#tower').screenshot({ path: process.env.TOWER_SHOTS ? `${process.env.TOWER_SHOTS}/${floors}-days.png` : undefined });
   });
