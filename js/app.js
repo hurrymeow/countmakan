@@ -8,6 +8,7 @@ import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
+import { towerModel, towerSvg, legend } from './tower.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
 import { $, el, fmt, uid, MACRO_KEYS, MACRO_NAMES, dot, hasKeys, state, setStatus, toast } from './ui.js';
@@ -242,6 +243,21 @@ function renderSummary() {
   ].filter(Boolean));
 }
 
+function renderTower() {
+  const m = towerModel(state.entries, state.targets, localDay(new Date()));
+  const wrap = el('div', { class: 'tower-wrap' });
+  wrap.insertAdjacentHTML('afterbegin', towerSvg(m));
+  const caption = m.count
+    ? `${m.stageName} · ${m.count} ${m.count === 1 ? 'floor' : 'floors'}${m.next ? ` · ${m.next.name} at ${m.next.at}` : ''}`
+    : 'Land a day within your calorie goal to lay the first floor.';
+  $('#tower').replaceChildren(
+    el('h2', {}, 'Your tower'),
+    wrap,
+    el('div', { class: 'muted tower-caption' }, caption),
+    el('ul', { class: 'tower-legend' }, legend(m).map((l) =>
+      el('li', {}, el('i', { style: `background:${l.color}` }), el('strong', {}, String(l.count)), el('span', { class: 'muted' }, `${l.label} · ${l.hint}`)))));
+}
+
 // ---------- Meal lists ----------
 export function renderToday() {
   const today = localDay(new Date());
@@ -249,6 +265,7 @@ export function renderToday() {
   $('#today-list').replaceChildren(...(list.length ? list.map(entryRow) : [el('li', { class: 'empty' }, 'No meals yet today. Your first one will show up here.')]));
   renderFavs();
   renderSummary();
+  renderTower();
   if (!$('#add').hidden || !$('#welcome').hidden || !$('#not-set-up').hidden) showStep('add');
 }
 
