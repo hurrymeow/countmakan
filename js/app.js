@@ -8,6 +8,7 @@ import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
+import { bonsaiModel, bonsaiSvg, weekTiles } from './bonsai.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
 import { $, el, fmt, uid, MACRO_KEYS, MACRO_NAMES, dot, hasKeys, state, setStatus, toast } from './ui.js';
@@ -242,6 +243,22 @@ function renderSummary() {
   ].filter(Boolean));
 }
 
+function renderGarden() {
+  const today = localDay(new Date());
+  const model = bonsaiModel(state.entries, state.targets, today);
+  const wrap = el('div', { class: 'bonsai-wrap' });
+  wrap.insertAdjacentHTML('afterbegin', bonsaiSvg(model));
+  const caption = model.days
+    ? `${model.days} ${model.days === 1 ? 'day' : 'days'} logged · ${model.full} on target`
+    : 'Log a meal to plant your bonsai.';
+  $('#garden').replaceChildren(wrap,
+    el('div', { class: 'muted bonsai-caption' }, caption),
+    el('ul', { class: 'wk-tiles', 'aria-label': 'This week' }, weekTiles(state.entries, state.targets, today).map((t) =>
+      el('li', { class: `wk-tile${t.logged ? ' logged' : ''}${t.onTarget ? ' on' : ''}${t.today ? ' today' : ''}`, 'aria-label': `${t.label}: ${t.onTarget ? 'on target' : t.logged ? 'logged' : 'not logged'}` },
+        el('span', { class: 'wk-mark', 'aria-hidden': 'true' }, t.onTarget ? '✓' : ''),
+        el('span', {}, t.label)))));
+}
+
 // ---------- Meal lists ----------
 export function renderToday() {
   const today = localDay(new Date());
@@ -249,6 +266,7 @@ export function renderToday() {
   $('#today-list').replaceChildren(...(list.length ? list.map(entryRow) : [el('li', { class: 'empty' }, 'No meals yet today. Your first one will show up here.')]));
   renderFavs();
   renderSummary();
+  renderGarden();
   if (!$('#add').hidden || !$('#welcome').hidden || !$('#not-set-up').hidden) showStep('add');
 }
 

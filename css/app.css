@@ -450,3 +450,25 @@ body:has(.sheet[open]) { overflow: hidden; }
 .sheet > .error-card { background: var(--surface); }
 /* Save and Cancel stay in reach while the foods scroll. */
 .sheet .editor-summary { position: sticky; top: var(--s-6); z-index: 1; background: var(--surface); padding-top: var(--s-2); }
+
+/* Bonsai */
+.bonsai-wrap { max-width: 340px; margin: 0 auto; }
+.bonsai { display: block; width: 100%; height: auto; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.bz-trunk, .bz-branch { stroke: var(--text-2); }
+.bz-branch { stroke-width: 2; }
+.bz-leaf { stroke: var(--text-2); stroke-width: 1.2; }
+.bz-leaf.full { stroke: var(--text); fill: rgb(237 237 237 / .1); }
+.bz-leaf.protein { stroke: var(--protein); fill: rgb(57 135 229 / .35); }
+.bz-leaf.brown { stroke: #c8863a; fill: rgb(200 134 58 / .5); }
+.bz-rib { stroke: var(--text-3); stroke-width: .8; }
+.bz-petal { stroke: var(--text); stroke-width: 1; }
+.bz-core { fill: var(--over); stroke: none; }
+.bz-pot { stroke: var(--text-2); stroke-width: 2; }
+.bonsai-caption { text-align: center; font-size: .875rem; margin-top: var(--s-1); }
+.wk-tiles { list-style: none; display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--s-2); margin: var(--s-4) 0 0; padding: 0; }
+.wk-tile { display: grid; justify-items: center; gap: var(--s-1); font-size: .75rem; color: var(--text-3); }
+.wk-tile.today { color: var(--text); }
+.wk-mark { display: grid; place-content: center; width: 100%; aspect-ratio: 1; max-height: 40px; border: 1px dashed var(--border-strong); border-radius: var(--r); color: var(--green); font-size: 1rem; }
+.wk-tile.logged .wk-mark { border-style: solid; background: var(--surface-2); }
+.wk-tile.on .wk-mark { border-color: var(--green-2); background: rgb(34 197 94 / .14); }
+.wk-tile.today .wk-mark { border-color: var(--text-2); }
