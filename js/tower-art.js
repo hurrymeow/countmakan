@@ -34,13 +34,19 @@ function segmentHtml(kind, w, H) {
   return `<div class="seg" style="width:${w}px">${pieces.map((p) => img(`${kind}-${p}`, `height:${H}px`)).join('')}</div>`;
 }
 
-function walkersHtml(floor, seed, H) {
+// Walkers cross the whole floor, entering and leaving at its edges, so none pop in or out.
+// They all walk the same way at the same pace and start evenly spread, so they never overlap.
+const WALK_SPEED = 28; // px per second, about one stride per frame swap
+const WALK_PAD = 60;
+function walkersHtml(floor, seed, H, W) {
+  const n = floor.walkers;
+  const route = W + WALK_PAD + 12;
+  const dur = route / WALK_SPEED;
   let out = '';
-  for (let i = 0; i < floor.walkers; i++) {
+  for (let i = 0; i < n; i++) {
     const p = PEOPLE[(seed + i * 3) % PEOPLE.length];
-    const x = ((seed * 37 + i * 41) % 80) + 5;
-    const dur = 9 + ((seed + i) % 5) * 2;
-    out += `<div class="walker" style="left:${x}%;height:${(H * 0.5).toFixed(1)}px;animation-duration:${dur}s;animation-delay:-${(i * 3 + seed) % dur}s">${img(`p-${p[0]}`)}${img(`p-${p[1]}`)}</div>`;
+    const delay = -((i + ((seed % 7) / 7)) / n) * dur;
+    out += `<div class="walker" style="height:${(H * 0.45).toFixed(1)}px;animation-duration:${dur.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s"><span>${img(`p-${p[0]}`)}${img(`p-${p[1]}`)}</span></div>`;
   }
   return out;
 }
@@ -67,7 +73,7 @@ export function floorHtml(floor, W, H) {
     used += w;
     return segmentHtml(floor.shops[i], w, H);
   }).join('');
-  const body = segs + (floor.messy ? messHtml(seed, H) : walkersHtml(floor, seed, H));
+  const body = segs + (floor.messy ? messHtml(seed, H) : walkersHtml(floor, seed, H, W));
   return `<div class="${cls}" style="width:${W}px;height:${H}px;--w:${W}px">${body}</div>${slabHtml(W, H)}`;
 }
 
