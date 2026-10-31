@@ -7,7 +7,7 @@ const deletes = (calls) => calls.filter((c) => c.url.includes(':batchDelete'));
 test.beforeEach(async ({ page }) => seedKeys(page));
 
 test('connected: save sends the meal, edit replaces it, delete removes it after undo window', async ({ page }) => {
-  test.setTimeout(45000);
+  await page.clock.install(); // The undo window is skipped with fastForward, not waited out.
   await mockModels(page, { 'gemini-3.8-flash': { status: 200, body: geminiBody(NASI) } });
   const calls = await mockHealth(page);
   await open(page);
@@ -34,14 +34,15 @@ test('connected: save sends the meal, edit replaces it, delete removes it after 
 
   await page.locator('#today-list .entry').click();
   await page.getByRole('button', { name: 'Delete this meal' }).click();
-  await page.waitForTimeout(1000);
+  await page.clock.fastForward(1000);
   expect(deletes(calls)).toHaveLength(1); // Still inside the undo window.
-  await expect.poll(() => deletes(calls).length, { timeout: 15000 }).toBe(2);
+  await page.clock.fastForward(10000);
+  await expect.poll(() => deletes(calls).length).toBe(2);
   expect(deletes(calls)[1].body.names).toEqual(['n/2']);
 });
 
 test('undo inside the window keeps the Google Health log', async ({ page }) => {
-  test.setTimeout(45000);
+  await page.clock.install();
   await mockModels(page, { 'gemini-3.8-flash': { status: 200, body: geminiBody(NASI) } });
   const calls = await mockHealth(page);
   await open(page);
@@ -55,7 +56,7 @@ test('undo inside the window keeps the Google Health log', async ({ page }) => {
   await page.locator('#today-list .entry').click();
   await page.getByRole('button', { name: 'Delete this meal' }).click();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await page.waitForTimeout(10500);
+  await page.clock.fastForward(10500);
   expect(deletes(calls)).toHaveLength(0);
   expect(posts(calls)).toHaveLength(1);
 });
@@ -137,7 +138,7 @@ test('off by default: saving a meal calls nothing', async ({ page }) => {
 });
 
 test('sync off: new meals stay local, deletes wait, past meals send on demand', async ({ page }) => {
-  test.setTimeout(45000);
+  await page.clock.install();
   await mockModels(page, { 'gemini-3.8-flash': { status: 200, body: geminiBody(NASI) } });
   const calls = await mockHealth(page);
   await open(page);
@@ -156,10 +157,12 @@ test('sync off: new meals stay local, deletes wait, past meals send on demand', 
   await page.getByRole('button', { name: 'Today' }).click();
   await page.locator('#today-list .entry').click();
   await page.getByRole('button', { name: 'Delete this meal' }).click();
+  // Deleting finishes on IndexedDB. A photo picked before then is overwritten by the late reset to Today.
+  await expect(page.locator('#toast')).toContainText('Meal deleted');
   await photoEstimate(page);
   await page.getByRole('button', { name: 'Save meal' }).click();
   await expect(page.locator('#toast')).toHaveText(/Meal saved/);
-  await page.waitForTimeout(10500);
+  await page.clock.fastForward(10500);
   expect(calls).toHaveLength(1);
 
   await settingsRow(page, 'health-row');
