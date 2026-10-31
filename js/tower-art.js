@@ -35,7 +35,7 @@ function segmentHtml(kind, w, H) {
 }
 
 // Walkers cross the whole floor, entering and leaving at its edges, so none pop in or out.
-// They alternate direction and spread evenly along the route so they never bunch up.
+// They all walk the same way at the same pace and start evenly spread, so they never overlap.
 const WALK_SPEED = 28; // px per second, about one stride per frame swap
 const WALK_PAD = 60;
 function walkersHtml(floor, seed, H, W) {
@@ -45,9 +45,8 @@ function walkersHtml(floor, seed, H, W) {
   let out = '';
   for (let i = 0; i < n; i++) {
     const p = PEOPLE[(seed + i * 3) % PEOPLE.length];
-    const rl = (seed + i) % 2 === 1;
     const delay = -((i + ((seed % 7) / 7)) / n) * dur;
-    out += `<div class="walker${rl ? ' rl' : ''}" style="height:${(H * 0.45).toFixed(1)}px;animation-duration:${dur.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s"><span>${img(`p-${p[0]}`)}${img(`p-${p[1]}`)}</span></div>`;
+    out += `<div class="walker" style="height:${(H * 0.45).toFixed(1)}px;animation-duration:${dur.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s"><span>${img(`p-${p[0]}`)}${img(`p-${p[1]}`)}</span></div>`;
   }
   return out;
 }

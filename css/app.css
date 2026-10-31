@@ -460,9 +460,7 @@ body:has(.sheet[open]) { overflow: hidden; }
 .roof { display: flex; justify-content: center; align-items: flex-end; }
 .ground { display: block; height: 40px; background: #16181d; }
 .walker { position: absolute; left: 0; bottom: 3px; animation: tower-walk linear infinite; animation-play-state: paused; }
-.walker.rl { animation-name: tower-walk-rl; }
 .walker span { display: block; position: relative; height: 100%; animation: tower-step .5s ease-in-out infinite; animation-play-state: paused; }
-.walker.rl img { transform: translateX(-50%) scaleX(-1); }
 /* Both frames share one anchor so their feet line up. Only one shows at a time. */
 .walker img { position: absolute; left: 0; bottom: 0; height: 100%; max-width: none; transform: translateX(-50%); }
 .walker img:nth-child(1) { animation: tower-f1 1s linear infinite; animation-play-state: paused; }
@@ -473,7 +471,6 @@ body:has(.sheet[open]) { overflow: hidden; }
 /* A small bob on each step, so walkers with a single frame still read as walking. */
 @keyframes tower-step { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 @keyframes tower-walk { from { transform: translateX(-60px); } to { transform: translateX(calc(var(--w, 320px) + 12px)); } }
-@keyframes tower-walk-rl { from { transform: translateX(calc(var(--w, 320px) + 12px)); } to { transform: translateX(-60px); } }
 .floor.tonight { opacity: .6; outline: 2px dashed #ffd166; outline-offset: -2px; }
 .floor.tonight.empty { background: rgb(255 209 102 / .06); }
 @media (prefers-reduced-motion: reduce) { .walker, .walker span, .walker img { animation: none !important; } .walker img:nth-child(2) { display: none; } }
