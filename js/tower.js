@@ -70,4 +70,4 @@ export function towerModel(entries, targets, today) {
 
 export const headerText = (m) => (m.count
   ? `${m.stageName} · ${m.count} ${m.count === 1 ? 'floor' : 'floors'}${m.next ? ` · ${m.next.name} at ${m.next.at}` : ''}`
-  : 'Log a full day to lay the first floor.');
+  : 'No floors yet');
