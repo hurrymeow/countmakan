@@ -7,7 +7,7 @@ const CACHE = 'countmakan-v3';
 // Every tower sprite, so the tower works offline.
 const TOWER_SPRITES = ['bakery', 'boxing', 'butch', 'deli', 'dojo', 'fish', 'noodle', 'nut', 'office', 'pizza', 'pool', 'sport']
   .flatMap((k) => ['edge', 'sig', 'mid'].map((p) => `img/tower/shops/${k}-${p}.png`))
-  .concat(['mess-ceiling', 'mess-clutter', 'mess-tape', 'roof-wide', 'lobby-wide', 'slab', 'sky', 'p-gym', 'p-kid', 'p-off1', 'p-off2', 'p-off3', 'p-old1', 'p-old2', 'p-rider', 'p-shop1', 'p-shop2', 'p-shop3'].map((n) => `img/tower/shops/${n}.png`));
+  .concat(['mess-ceiling', 'mess-clutter', 'mess-tape', 'roof-wide', 'lobby-wide', 'slab', 'sky', 'w-gym', 'w-office', 'w-shopper', 'w-old', 'w-kid', 'w-rider'].map((n) => `img/tower/shops/${n}.png`));
 
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png',
