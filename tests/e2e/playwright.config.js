@@ -14,6 +14,8 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}/`,
     viewport: { width: 390, height: 844 },
+    // The tower loop would race the fake clock some specs install. Specs that test motion opt back in.
+    reducedMotion: 'reduce',
     launchOptions: existsSync(SANDBOX_CHROMIUM) ? { executablePath: SANDBOX_CHROMIUM } : {},
   },
   webServer: {

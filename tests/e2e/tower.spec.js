@@ -88,6 +88,21 @@ test('tower: Today canvas draws pixels and ground shows for a short tower', asyn
   expect(await canvas.evaluate((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v) => v > 0))).toBe(true);
 });
 
+test.describe('motion', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  test('tower: walkers move between frames when motion is allowed', async ({ page }) => {
+    await seedKeys(page);
+    await open(page);
+    await seed(page, 3);
+    await page.reload();
+    await page.waitForSelector('body[data-ready]', { state: 'attached' });
+    const canvas = page.locator('#summary .scene-tower canvas');
+    const grab = () => canvas.evaluate((c) => c.toDataURL());
+    const a = await grab();
+    await expect.poll(grab, { timeout: 5000 }).not.toBe(a);
+  });
+});
+
 test('tower: empty tap-in view says how to start', async ({ page }) => {
   await seedKeys(page);
   await open(page);
