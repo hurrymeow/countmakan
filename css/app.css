@@ -453,27 +453,7 @@ body:has(.sheet[open]) { overflow: hidden; }
 
 /* Macro tower */
 .tower-stack { position: relative; width: 100%; }
-.seg { display: flex; overflow: hidden; flex: none; height: 100%; }
-.seg img, .roof img { display: block; flex: none; max-width: none; }
-.floor { position: relative; display: flex; overflow: hidden; margin: 0 auto; box-shadow: inset 3px 0 0 #2d3244, inset -3px 0 0 #2d3244; }
-.slab { display: block; margin: 0 auto; background: url(../img/tower/shops/slab.png) center / cover; border-radius: 1px; }
-.roof { display: flex; justify-content: center; align-items: flex-end; }
-.ground { display: block; height: 40px; background: #16181d; }
-.walker { position: absolute; left: 0; bottom: 3px; animation: tower-walk linear infinite; animation-play-state: paused; }
-/* One strip per walker. The frames step across it, and a small bob lands on each half cycle. */
-.walker span {
-  display: block; width: 100%; height: 100%; background-size: auto 100%; background-repeat: no-repeat;
-  animation: tower-frames 1.2s steps(var(--n)) infinite, tower-step .6s ease-in-out infinite; animation-play-state: paused;
-}
-.in-view .walker, .in-view .walker span { animation-play-state: running; }
-@keyframes tower-frames { to { background-position-x: calc(var(--sw) * -1); } }
-@keyframes tower-step { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
-@keyframes tower-walk { from { transform: translateX(-60px); } to { transform: translateX(calc(var(--w, 320px) + 12px)); } }
-.floor.tonight { opacity: .6; outline: 2px dashed #ffd166; outline-offset: -2px; }
-.floor.tonight.empty { background: rgb(255 209 102 / .06); }
-@media (prefers-reduced-motion: reduce) { .walker, .walker span { animation: none !important; } }
-.dim { position: absolute; inset: 0; background: rgb(20 10 30 / .45); }
-.mess { position: absolute; }
+.tower-stack canvas, .scene-tower canvas { display: block; margin: 0 auto; }
 
 /* Today scene */
 .scene {
@@ -500,6 +480,5 @@ body:has(.sheet[open]) { overflow: hidden; }
 .tower-head h2 { margin: 0; font-size: 1.0625rem; }
 .tower-close { width: 44px; height: 44px; font-size: 1.5rem; line-height: 1; background: none; border: 0; color: var(--text-2); cursor: pointer; }
 .tower-scroll { flex: 1; overflow-y: auto; background: linear-gradient(#0d1230, #2b2655 80%, #8a5a6e); padding-top: var(--s-6); overscroll-behavior: contain; }
-.tower-scroll .floor, .tower-scroll .slab { content-visibility: auto; contain-intrinsic-size: auto var(--fh, 104px); }
 .tower-empty { margin: 0 var(--s-6) var(--s-4); padding: var(--s-4); text-align: center; color: var(--text-2); background: rgb(14 14 24 / .72); border-radius: var(--r); }
 .tower-empty strong { color: var(--text); }

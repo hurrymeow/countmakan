@@ -59,3 +59,24 @@ test('milestones and stages count every floor, messy or not', () => {
   assert.deepEqual(m.built, ['lobby', 'garden', 'spire']);
   assert.equal(m.next.key, 'beacon');
 });
+
+test('a walker returns to the same spot and frame after one 8 s loop', async () => {
+  const { walkersFor, walkerState, LOOP } = await import('../js/tower-art.js');
+  assert.equal(LOOP, 8);
+  for (const seed of [1, 7, 12345]) {
+    for (const w of walkersFor(seed, 3, 67)) {
+      for (const t of [0.3, 1.3, 3.7, 6.1]) {
+        const a = walkerState(w, t, 67), b = walkerState(w, t + LOOP, 67);
+        assert.ok(Math.abs(a.x - b.x) < 1e-6, `x ${a.x} vs ${b.x}`);
+        assert.equal(a.frame, b.frame);
+      }
+    }
+  }
+});
+
+test('walkers mix directions and speeds across floors', async () => {
+  const { walkersFor } = await import('../js/tower-art.js');
+  const all = [1, 2, 3, 4, 5, 6, 7, 8].flatMap((s) => walkersFor(s, 3, 67));
+  assert.ok(new Set(all.map((w) => w.dir)).size === 2);
+  assert.ok(new Set(all.map((w) => w.laps)).size === 2);
+});

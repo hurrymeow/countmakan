@@ -9,7 +9,7 @@ import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
 import { towerModel } from './tower.js';
-import { towerHtml, FLOOR_RATIO } from './tower-art.js';
+import { animate } from './tower-art.js';
 import { openTower } from './tower-view.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
@@ -257,10 +257,12 @@ function renderSummary() {
 }
 
 // The scene frames only the top of the tower. Ground shows when every floor fits.
+let stopScene = () => {};
 function fillScene(slot, m) {
-  const W = Math.round(slot.clientWidth) || 190;
-  const H = Math.round(W / FLOOR_RATIO);
-  slot.innerHTML = towerHtml(m, W, H, { limit: 4, ground: m.count <= 4 });
+  stopScene();
+  const canvas = document.createElement('canvas');
+  slot.replaceChildren(canvas);
+  stopScene = animate(canvas, m, { W: Math.round(slot.clientWidth) || 190, mode: 'today', limit: 4, ground: m.count <= 4, goal: state.targets.kcal });
 }
 
 // ---------- Meal lists ----------

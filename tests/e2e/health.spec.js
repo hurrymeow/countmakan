@@ -167,6 +167,12 @@ test('sync off: new meals stay local, deletes wait, past meals send on demand', 
 
   await settingsRow(page, 'health-row');
   await expect(page.locator('#health-status')).toHaveText(/1 change waits until you turn it back on/);
+  // Playwright's fake clock sometimes drops an earlier fastForward while the page is busy. Make sure the delete is still ripe.
+  for (let i = 0; i < 5; i++) {
+    const ripe = await page.evaluate(() => JSON.parse(localStorage.getItem('countmakan.healthDeletes') || '[]').every((d) => Date.now() - d.at >= 9000));
+    if (ripe) break;
+    await page.clock.fastForward(10500);
+  }
   await page.getByRole('switch', { name: 'Send new meals' }).check();
   await expect.poll(() => deletes(calls).length).toBe(1);
   expect(deletes(calls)[0].body.names).toEqual(['n/1']);
