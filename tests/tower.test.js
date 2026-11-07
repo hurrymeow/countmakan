@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { towerModel, macroShare, pickShops, SHOPS } from '../js/tower.js';
+import { towerModel, macroShare, pickShops, celebrationFor, SHOPS } from '../js/tower.js';
 
 const T = { kcal: 1800, protein: 60, carbs: 225, fat: 60 };
 const meal = (d, kcal, protein, carbs, fat) => ({ day: d, items: [{ name: 'x', kcal, protein, carbs, fat }] });
@@ -79,4 +79,38 @@ test('walkers mix directions and speeds across floors', async () => {
   const all = [1, 2, 3, 4, 5, 6, 7, 8].flatMap((s) => walkersFor(s, 3, 67));
   assert.ok(new Set(all.map((w) => w.dir)).size === 2);
   assert.ok(new Set(all.map((w) => w.laps)).size === 2);
+});
+
+test('proteinHit and inBand are set on past floors and on tonight', () => {
+  const m = towerModel([
+    meal('2026-10-01', 1800, 60, 225, 60), meal('2026-10-02', 1800, 59, 225, 60), meal('2026-10-03', 2600, 80, 225, 60),
+    meal('2026-10-04', 1000, 70, 100, 30), meal('2026-10-05', 1700, 40, 225, 60),
+  ], T, '2026-10-05');
+  assert.deepEqual(m.floors.map((f) => f.proteinHit), [true, false, true, true]);
+  assert.deepEqual(m.floors.map((f) => f.inBand), [true, true, false, false]);
+  assert.equal(m.tonight.proteinHit, false);
+  assert.equal(m.tonight.inBand, true);
+  const m2 = towerModel([meal('2026-10-05', 900, 61, 100, 30)], T, '2026-10-05');
+  assert.equal(m2.tonight.proteinHit, true);
+  assert.equal(m2.tonight.inBand, false);
+});
+
+test('without targets nothing counts as a hit', () => {
+  const m = towerModel([meal('2026-10-05', 900, 61, 100, 30)], { kcal: 0, protein: 0 }, '2026-10-05');
+  assert.equal(m.tonight.proteinHit, false);
+  assert.equal(m.tonight.inBand, false);
+});
+
+test('celebrationFor: first hit, both at once, already done, new day, going over', () => {
+  const D = '2026-10-05';
+  assert.equal(celebrationFor(null, { day: D, proteinHit: false, inBand: false }), null);
+  assert.equal(celebrationFor(null, { day: D, proteinHit: true, inBand: false }), 'protein');
+  assert.equal(celebrationFor(null, { day: D, proteinHit: false, inBand: true }), 'calorie');
+  assert.equal(celebrationFor(null, { day: D, proteinHit: true, inBand: true }), 'both');
+  assert.equal(celebrationFor({ day: D, protein: true, kcal: false }, { day: D, proteinHit: true, inBand: true }), 'calorie');
+  assert.equal(celebrationFor({ day: D, protein: true, kcal: true }, { day: D, proteinHit: true, inBand: true }), null);
+  assert.equal(celebrationFor({ day: '2026-10-04', protein: true, kcal: true }, { day: D, proteinHit: true, inBand: true }), 'both');
+  // went over after dinner, then back into the band: no replay
+  assert.equal(celebrationFor({ day: D, protein: true, kcal: true }, { day: D, proteinHit: true, inBand: false }), null);
+  assert.equal(celebrationFor({ day: D, protein: true, kcal: true }, { day: D, proteinHit: true, inBand: true }), null);
 });

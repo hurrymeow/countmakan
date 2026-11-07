@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedKeys, open } from './helpers.js';
+import { seedKeys, open, mockModels, photoEstimate, geminiBody, NASI } from './helpers.js';
 
 // `floors` past days ending yesterday. Every seventh is a messy day (500 kcal), the rest are on target.
 async function seed(page, floors) {
@@ -101,6 +101,43 @@ test.describe('motion', () => {
     const a = await grab();
     await expect.poll(grab, { timeout: 5000 }).not.toBe(a);
   });
+});
+
+test.describe('goal beat', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  test('tower: logging a meal that crosses the protein goal plays one beat, a reload shows none', async ({ page }) => {
+    await seedKeys(page);
+    await mockModels(page, { 'gemini-3.8-flash': { status: 200, body: geminiBody(NASI) } });
+    await open(page);
+    await seed(page, 5); // tonight starts at 38 g protein of 60
+    await page.reload();
+    await page.waitForSelector('body[data-ready]', { state: 'attached' });
+    await expect(page.locator('.scene-fx')).toHaveCount(0);
+    await photoEstimate(page);
+    await page.getByRole('button', { name: 'Save meal' }).click();
+    const fx = page.locator('#summary .scene-fx');
+    await expect(fx).toHaveCount(1);
+    await expect(fx).toHaveCSS('pointer-events', 'none');
+    await expect(fx).toHaveCount(0, { timeout: 8000 });
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('countmakan.celebrated')).protein)).toBe(true);
+    await page.reload();
+    await page.waitForSelector('body[data-ready]', { state: 'attached' });
+    await expect(page.locator('#summary .scene-tower canvas')).toBeVisible();
+    await expect(page.locator('.scene-fx')).toHaveCount(0);
+  });
+});
+
+test('tower: reduced motion draws no beat', async ({ page }) => {
+  await seedKeys(page);
+  await mockModels(page, { 'gemini-3.8-flash': { status: 200, body: geminiBody(NASI) } });
+  await open(page);
+  await seed(page, 5);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await photoEstimate(page);
+  await page.getByRole('button', { name: 'Save meal' }).click();
+  await expect(page.locator('#summary .scene-tower canvas')).toBeVisible();
+  await expect(page.locator('.scene-fx')).toHaveCount(0);
 });
 
 test('tower: empty tap-in view says how to start', async ({ page }) => {

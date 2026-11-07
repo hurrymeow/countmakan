@@ -8,8 +8,8 @@ import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
-import { towerModel } from './tower.js';
-import { animate } from './tower-art.js';
+import { towerModel, celebrationFor } from './tower.js';
+import { animate, startBeat, playOverlay } from './tower-art.js';
 import { openTower } from './tower-view.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
@@ -253,16 +253,44 @@ function renderSummary() {
       limitBar('Fibre', t.fibre, state.targets.fibre, 'g', true),
       limitBar('Sodium', t.sodium, state.targets.sodium, 'mg')),
   ].filter(Boolean));
-  fillScene(slot, m);
+  const beat = beatFor(m.tonight, today, goal, scene);
+  fillScene(slot, m, beat);
+  if (beat) stopOverlay = playOverlay(scene, slot.querySelector('canvas'), ring, m, beat);
+}
+
+// A goal beat plays once per goal per day, on the render after a meal crosses it.
+// The first render of a session only records what is already hit, so a reload shows the end state.
+const CELEBRATED = 'countmakan.celebrated';
+let beatReady = false;
+let prevKcal = 0;
+let stopOverlay = () => {};
+function beatFor(tonight, today, goal, scene) {
+  const now = { day: today, proteinHit: !!tonight?.proteinHit, inBand: !!tonight?.inBand };
+  let done = null;
+  try { done = JSON.parse(localStorage.getItem(CELEBRATED)); } catch { /* private mode */ }
+  const kind = celebrationFor(done, now);
+  const before = prevKcal;
+  prevKcal = tonight?.kcal || 0;
+  const ready = beatReady;
+  beatReady = true;
+  if (!kind) return null;
+  const seen = done?.day === today ? done : {};
+  try {
+    localStorage.setItem(CELEBRATED, JSON.stringify({ day: today, protein: !!seen.protein || now.proteinHit, kcal: !!seen.kcal || now.inBand }));
+  } catch { /* private mode */ }
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!ready || calm || !scene.offsetParent) return null;
+  return startBeat(kind, goal > 0 ? Math.min(0.85, before / goal) : 0.8);
 }
 
 // The scene frames only the top of the tower. Ground shows when every floor fits.
 let stopScene = () => {};
-function fillScene(slot, m) {
+function fillScene(slot, m, beat = null) {
   stopScene();
+  stopOverlay();
   const canvas = document.createElement('canvas');
   slot.replaceChildren(canvas);
-  stopScene = animate(canvas, m, { W: Math.round(slot.clientWidth) || 190, mode: 'today', limit: 4, ground: m.count <= 4, goal: state.targets.kcal });
+  stopScene = animate(canvas, m, { W: Math.round(slot.clientWidth) || 190, mode: 'today', limit: 4, ground: m.count <= 4, goal: state.targets.kcal, beat });
 }
 
 // ---------- Meal lists ----------

@@ -47,6 +47,8 @@ function floorFor(day, meals, targets, live = false) {
   const messy = !live && targets.kcal > 0 && !onTarget(t.kcal, targets.kcal);
   return {
     day, share: macroShare(t), shops: pickShops(day), messy, kcal: t.kcal, live,
+    proteinHit: targets.protein > 0 && t.protein >= targets.protein,
+    inBand: targets.kcal > 0 && onTarget(t.kcal, targets.kcal),
     walkers: messy || live ? 0 : Math.min(MAX_WALKERS, meals.length),
   };
 }
@@ -71,3 +73,13 @@ export function towerModel(entries, targets, today) {
 export const headerText = (m) => (m.count
   ? `${m.stageName} · ${m.count} ${m.count === 1 ? 'floor' : 'floors'}${m.next ? ` · ${m.next.name} at ${m.next.at}` : ''}`
   : 'No floors yet');
+
+// Which beat to play, given what was already celebrated today and the state now.
+// `done` is { day, protein, kcal } from storage (or null). `now` is { day, proteinHit, inBand }.
+// Going over after dinner never replays a beat: a goal celebrates once per day.
+export function celebrationFor(done, now) {
+  const seen = done?.day === now.day ? done : { protein: false, kcal: false };
+  const p = !!now.proteinHit && !seen.protein;
+  const k = !!now.inBand && !seen.kcal;
+  return p && k ? 'both' : p ? 'protein' : k ? 'calorie' : null;
+}
