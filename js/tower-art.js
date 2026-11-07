@@ -100,8 +100,8 @@ function walker(ctx, w, st, x, y, W, H) {
   R(SKIN[w.look], -2, top, 4, 4); R('#2a1e18', -2, top, 4, 1); R('#2a1e18', -2, top + 1, 1, 2); R('#1a1a1a', 1, top + 2, 1, 1);
 }
 
-// One floor at (x, y), W by H, plus its slab. Returns the height used.
-function floor(ctx, x, y, W, H, fl, t, goal) {
+// Everything on a floor that never moves: shops, messy clutter, the live dim, and the slab.
+function floorStatic(ctx, x, y, W, H, fl, goal) {
   const seed = hash(fl.day);
   const r = rng(seed);
   let sx = x;
@@ -147,14 +147,29 @@ function floor(ctx, x, y, W, H, fl, t, goal) {
     for (let k = 0; k < W; k += 3) { ctx.fillRect(x + k, y, 2, 1); ctx.fillRect(x + k, y + H - 1, 2, 1); }
     for (let k = 0; k < H; k += 3) { ctx.fillRect(x, y + k, 1, 2); ctx.fillRect(x + W - 1, y + k, 1, 2); }
   }
+  ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
+  ctx.fillStyle = '#3a3d4c'; ctx.fillRect(x - 1, y + H + 1, W + 2, 1);
+}
+
+// The static part is drawn once per floor and size, then copied each frame. Only walkers redraw.
+const statics = new WeakMap();
+function floor(ctx, x, y, W, H, fl, t, goal) {
+  let c = statics.get(fl);
+  if (!c || c.W !== W || c.H !== H || c.goal !== goal) {
+    const cv = document.createElement('canvas');
+    cv.width = W + 2; cv.height = H + 2;
+    floorStatic(cv.getContext('2d'), 1, 0, W, H, fl, goal);
+    c = { cv, W, H, goal };
+    statics.set(fl, c);
+  }
+  ctx.drawImage(c.cv, x - 1, y);
+  const seed = hash(fl.day);
   const n = fl.live ? 1 : fl.walkers;
   if (!fl.messy && n > 0) {
     ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y, W - 2, H); ctx.clip();
     for (const w of walkersFor(seed, n, W)) walker(ctx, w, walkerState(w, t, W), x, y, W, H);
     ctx.restore();
   }
-  ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
-  ctx.fillStyle = '#3a3d4c'; ctx.fillRect(x - 1, y + H + 1, W + 2, 1);
   return H + 2;
 }
 
@@ -234,6 +249,7 @@ export function drawTower(canvas, m, opts = {}, layout = sizeTower(canvas, m, op
   return layout;
 }
 
+const FRAME_MS = 50; // 20 fps is plenty for a 4-frame pixel gait
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Draws now, then loops on requestAnimationFrame only while the canvas is on screen.
@@ -251,12 +267,12 @@ export function animate(canvas, m, opts = {}) {
   };
   paint(1.3);
   if (reduced()) return () => {};
-  let raf = 0, visible = true, stopped = false;
+  let raf = 0, visible = true, stopped = false, last = 0;
   const start = performance.now();
   const frame = (now) => {
     raf = 0;
     if (stopped || !canvas.isConnected) return;
-    paint((now - start) / 1000 + 1.3);
+    if (now - last >= FRAME_MS) { last = now; paint((now - start) / 1000 + 1.3); }
     if (visible) raf = requestAnimationFrame(frame);
   };
   const io = new IntersectionObserver((rows) => {
