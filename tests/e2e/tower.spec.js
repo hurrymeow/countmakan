@@ -41,7 +41,7 @@ for (const floors of [0, 3, 45, 120]) {
     await expect(scene).toHaveAttribute('aria-label', new RegExp(`^${floors} floors?, .*Open tower$`));
     await expect(page.locator('#summary')).not.toContainText(/\b(null|undefined|NaN)\b/);
     await expect(page.locator('#tower')).toHaveCount(0);
-    await expect(page.locator('#summary .floor').first()).toBeVisible();
+    await expect(page.locator('#summary .scene-tower canvas')).toBeVisible();
     const ring = await page.locator('#summary .ring-wrap').boundingBox();
     const tower = await page.locator('#summary .scene-tower').boundingBox();
     expect(overlaps(ring, tower)).toBe(false);
@@ -61,7 +61,7 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await page.locator('#summary .scene').click();
   await expect(view).toBeVisible();
   await expect(view.locator('.tower-sub')).toContainText('45 floors');
-  await expect(view.locator('.floor:not(.tonight)')).toHaveCount(45);
+  await expect(view.locator('canvas')).toHaveAttribute('data-floors', '45');
   await expect(view.locator('.tower-scroll')).toHaveJSProperty('scrollTop', 0);
   if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/view-top.png` });
   await view.locator('.tower-scroll').evaluate((n) => { n.scrollTop = n.scrollHeight; });
@@ -77,17 +77,15 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await expect(view).toBeHidden();
 });
 
-test('tower: sprites load and the empty tap-in view invites a first meal', async ({ page }) => {
-  const broken = [];
-  page.on('response', (r) => { if (r.url().includes('/img/') && r.status() >= 400) broken.push(r.url()); });
+test('tower: Today canvas draws pixels and ground shows for a short tower', async ({ page }) => {
   await seedKeys(page);
   await open(page);
   await seed(page, 3);
   await page.reload();
   await page.waitForSelector('body[data-ready]', { state: 'attached' });
-  await expect(page.locator('#summary .floor img').first()).toBeVisible();
-  expect(await page.locator('#summary .floor img').first().evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true);
-  expect(broken).toEqual([]);
+  const canvas = page.locator('#summary .scene-tower canvas');
+  await expect(canvas).toHaveAttribute('data-floors', '3');
+  expect(await canvas.evaluate((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v) => v > 0))).toBe(true);
 });
 
 test('tower: empty tap-in view says how to start', async ({ page }) => {
