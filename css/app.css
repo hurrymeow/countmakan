@@ -462,6 +462,7 @@ body:has(.sheet[open]) { overflow: hidden; }
   background: linear-gradient(#0d1230, #2b2655 70%, #8a5a6e); border: 0; border-radius: var(--r) var(--r) 0 0;
 }
 .scene:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.scene-sky { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
 .scene-date { position: absolute; z-index: 2; top: var(--s-6); left: var(--s-6); display: block; color: #e6e6f0; text-shadow: 0 1px 4px rgb(0 0 0 / .5); }
 .scene-tower { position: absolute; z-index: 1; top: 60px; right: var(--s-6); width: calc(100% - 152px - var(--s-6) * 2 - var(--s-2)); }
 .scene-fade { position: absolute; z-index: 1; inset: auto 0 0; height: 110px; background: linear-gradient(transparent, var(--surface)); pointer-events: none; }
