@@ -2,7 +2,7 @@
 // that the browser scales up with no smoothing, so the pixels stay crisp at any size.
 // Each floor is split left to right by macro share. Each shop has its own wall, floor and two props,
 // with one small moving detail. Goal beats (neon, flag, fireworks) are drawn here too.
-import { hash } from './tower.js';
+import { hash, skylineFor } from './tower.js';
 
 // Floor aspect: width over height, in the low-res buffer.
 export const FLOOR_RATIO = 2.4;
@@ -54,19 +54,24 @@ export function walkerState(w, t, W, figH = FIG_H) {
 }
 
 // ---------- pieces ----------
-// `flag` is 0..1: how far up the pole it has climbed. 0 hides it.
-function roof(ctx, x, y, W, flag = 0, t = 0) {
+// `flag` is 0..1: how far up the pole it has climbed. 0 hides it. `built` lists the milestones reached.
+function roof(ctx, x, y, W, flag = 0, t = 0, built = []) {
   ctx.fillStyle = '#2a2d3d'; ctx.fillRect(x - 1, y - 3, W + 2, 3);
   ctx.fillStyle = '#5a5f78'; ctx.fillRect(x + 3, y - 9, 8, 6);
   ctx.fillStyle = '#3a3f55'; ctx.fillRect(x + 4, y - 8, 6, 1);
-  ctx.fillStyle = '#4f7a3a';
-  for (let i = W - 8; i > W * 0.5; i -= 7) {
-    ctx.fillRect(x + i, y - 7, 4, 4);
-    ctx.fillStyle = '#6a9b4d'; ctx.fillRect(x + i + 1, y - 7, 2, 1);
+  const fp = x + Math.floor(W * 0.35);
+  if (built.includes('garden')) garden(ctx, x, y, W, fp);
+  else {
     ctx.fillStyle = '#4f7a3a';
+    for (let i = W - 8; i > W * 0.5; i -= 7) {
+      ctx.fillRect(x + i, y - 7, 4, 4);
+      ctx.fillStyle = '#6a9b4d'; ctx.fillRect(x + i + 1, y - 7, 2, 1);
+      ctx.fillStyle = '#4f7a3a';
+    }
   }
+  if (built.includes('spire')) spire(ctx, x + Math.floor(W / 2), y, built.includes('beacon'), t);
   if (flag > 0) {
-    const px = x + Math.floor(W * 0.35);
+    const px = fp;
     ctx.fillStyle = '#9aa0b0'; ctx.fillRect(px, y - 14, 1, 11);
     const fy = Math.round(y - 7 - 7 * Math.min(1, flag)), wv = Math.floor(t * 6) % 2;
     ctx.fillStyle = AMBER; ctx.fillRect(px + 1, fy, 6, 3); ctx.fillRect(px + 7, fy + wv, 1, 2);
@@ -74,6 +79,40 @@ function roof(ctx, x, y, W, flag = 0, t = 0) {
     ctx.fillStyle = '#12141c'; ctx.fillRect(px + 3, fy + 1, 1, 1); ctx.fillRect(px + 4, fy, 1, 1);
   }
   return 3;
+}
+
+// Roof garden: a pergola with a bench on the left, three trees on the right. Both stay clear of the flag pole.
+function garden(ctx, x, y, W, fp) {
+  const px = x + 14, pw = Math.max(8, fp - 3 - px);
+  ctx.fillStyle = '#7a5a3c'; ctx.fillRect(px, y - 11, 1, 8); ctx.fillRect(px + pw - 1, y - 11, 1, 8); ctx.fillRect(px, y - 12, pw, 1);
+  ctx.fillStyle = '#4f7a3a';
+  for (let k = 1; k < pw - 1; k += 2) ctx.fillRect(px + k, y - 13, 1, 1);
+  ctx.fillStyle = '#6a9b4d'; ctx.fillRect(px + 2, y - 11, 1, 2); ctx.fillRect(px + pw - 3, y - 11, 1, 1);
+  ctx.fillStyle = '#b08a5a'; ctx.fillRect(px + 2, y - 6, pw - 4, 1);
+  ctx.fillStyle = '#5a4630'; ctx.fillRect(px + 2, y - 5, 1, 2); ctx.fillRect(px + pw - 3, y - 5, 1, 2);
+  for (const f of [0.62, 0.77, 0.9]) {
+    const tx = x + Math.floor(W * f);
+    ctx.fillStyle = '#5a4630'; ctx.fillRect(tx, y - 7, 1, 4);
+    ctx.fillStyle = '#4f7a3a'; ctx.fillRect(tx - 2, y - 12, 5, 5);
+    ctx.fillStyle = '#6a9b4d'; ctx.fillRect(tx - 1, y - 12, 2, 1); ctx.fillRect(tx - 2, y - 11, 1, 1);
+  }
+}
+
+// Spire: a stepped base, a mast and a red tip, centred on the roof. The beacon adds a pulsing light.
+function spire(ctx, cx, y, beacon, t) {
+  ctx.fillStyle = '#5a5f78'; ctx.fillRect(cx - 5, y - 6, 10, 3);
+  ctx.fillStyle = '#3a3f55'; ctx.fillRect(cx - 5, y - 4, 10, 1);
+  ctx.fillStyle = '#6b7090'; ctx.fillRect(cx - 3, y - 10, 6, 4);
+  ctx.fillStyle = '#3a3f55'; ctx.fillRect(cx - 3, y - 8, 6, 1);
+  ctx.fillStyle = '#9aa0b0'; ctx.fillRect(cx, y - 34, 1, 24);
+  ctx.fillRect(cx - 1, y - 20, 3, 1);
+  ctx.fillStyle = '#e0453a'; ctx.fillRect(cx, y - 38, 1, 4);
+  if (!beacon) return;
+  const k = reduced() ? 1 : 0.5 + 0.5 * Math.sin(t * 4);
+  ctx.fillStyle = `rgba(255,70,60,${(0.12 + 0.28 * k).toFixed(2)})`; ctx.fillRect(cx - 3, y - 42, 7, 7);
+  ctx.fillStyle = `rgba(255,70,60,${(0.3 + 0.4 * k).toFixed(2)})`; ctx.fillRect(cx - 2, y - 41, 5, 5);
+  ctx.fillStyle = k > 0.5 ? '#ff6b5e' : '#e0453a'; ctx.fillRect(cx - 1, y - 40, 3, 3);
+  ctx.fillStyle = '#ffd9d4'; ctx.fillRect(cx, y - 39, 1, 1);
 }
 
 // ---------- 12 interiors ----------
@@ -373,7 +412,7 @@ function emptyTonight(ctx, x, y, W, H) {
 
 // Lobby for short towers: dark front, glass doors, a lit sign. Then pavement.
 const GROUND_H = 8;
-function lobby(ctx, x, y, W, H) {
+function lobby(ctx, x, y, W, H, built = false) {
   ctx.fillStyle = '#23262f'; ctx.fillRect(x, y, W, H);
   ctx.fillStyle = '#12141c'; ctx.fillRect(x, y, 1, H); ctx.fillRect(x + W - 1, y, 1, H);
   ctx.fillStyle = '#ffd166'; ctx.fillRect(x + 4, y + 3, W - 8, 3);
@@ -382,6 +421,14 @@ function lobby(ctx, x, y, W, H) {
   ctx.fillStyle = '#7fd0ff'; ctx.fillRect(dx, y + 9, dw, H - 9);
   ctx.fillStyle = '#12141c'; ctx.fillRect(dx + Math.floor(dw / 2), y + 9, 1, H - 9);
   ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(dx + 2, y + 10, 1, 5);
+  if (built) {
+    // Canopy over the doors, with posts and a small sign.
+    const cw = dw + 8, cx0 = dx - 4;
+    for (let k = 0; k < cw; k += 3) { ctx.fillStyle = (k / 3) % 2 ? '#f2e6d6' : '#d9483b'; ctx.fillRect(cx0 + k, y + 7, Math.min(3, cw - k), 3); }
+    ctx.fillStyle = '#8f2a22'; ctx.fillRect(cx0, y + 10, cw, 1);
+    ctx.fillStyle = '#5a5e70'; ctx.fillRect(cx0, y + 10, 1, H - 10); ctx.fillRect(cx0 + cw - 1, y + 10, 1, H - 10);
+    ctx.fillStyle = '#12141c'; ctx.fillRect(dx + Math.floor(dw / 2) - 4, y + 4, 9, 1);
+  }
   ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
   ctx.fillStyle = '#16181d'; ctx.fillRect(0, y + H + 2, ctx.canvas.width, GROUND_H - 2);
   ctx.fillStyle = '#2d3244'; ctx.fillRect(0, y + H + 2, ctx.canvas.width, 1);
@@ -390,6 +437,8 @@ function lobby(ctx, x, y, W, H) {
 
 // ---------- layout and drawing ----------
 const ROOF_TOP = 15; // room above the roof line for the rooftop props and the flag
+const SPIRE_TOP = 45; // with a spire built the mast and beacon need more headroom
+export const roofTopFor = (m) => (m.built?.includes('spire') ? SPIRE_TOP : ROOF_TOP);
 const SKY_PAD = 3; // matches the gap the roof slab leaves above the first floor
 
 function prepare(m, { limit = Infinity, ground = false }) {
@@ -406,30 +455,32 @@ export function sizeTower(canvas, m, { W, mode = 'today', limit, ground } = {}) 
   const lw = Math.max(40, Math.round(W / u));
   const H = Math.round(lw / FLOOR_RATIO);
   const rows = prepare(m, { limit, ground });
-  const top = ROOF_TOP + SKY_PAD;
+  const roofTop = roofTopFor(m);
+  const top = roofTop + SKY_PAD;
   const lh = top + rows.reduce((a, r) => a + (r.kind === 'lobby' ? H + GROUND_H : H + 2), 0);
   canvas.width = lw; canvas.height = lh;
   canvas.style.width = `${lw * u}px`; canvas.style.height = `${lh * u}px`;
   canvas.style.imageRendering = 'pixelated';
+  canvas.dataset.roofTop = String(roofTop);
   canvas.dataset.floors = String(rows.filter((r) => r.kind === 'floor' && !r.fl.live).length);
-  return { u, lw, lh, H, rows, top };
+  return { u, lw, lh, H, rows, top, roofTop };
 }
 
 // Draws the tower at time t (seconds). With `range` ([y0, y1] in buffer px) only floors in view are redrawn.
 export function drawTower(canvas, m, opts = {}, layout = sizeTower(canvas, m, opts), t = 1.3) {
   const ctx = canvas.getContext('2d');
-  const { lw, lh, H, rows, top } = layout;
+  const { lw, lh, H, rows, top, roofTop } = layout;
   const [y0, y1] = opts.range || [0, lh];
   const goal = opts.goal;
   ctx.clearRect(0, Math.max(0, y0), lw, Math.min(lh, y1) - Math.max(0, y0));
-  if (y0 <= top) roof(ctx, 0, ROOF_TOP, lw, opts.fx?.flag ?? (m.tonight?.inBand ? 1 : 0), t);
+  if (y0 <= top) roof(ctx, 0, roofTop, lw, opts.fx?.flag ?? (m.tonight?.inBand ? 1 : 0), t, m.built);
   let y = top;
   for (const row of rows) {
     const h = row.kind === 'lobby' ? H + GROUND_H : H + 2;
     if (y + h >= y0 && y <= y1) {
       if (row.kind === 'floor') floor(ctx, 0, y, lw, H, row.fl, t, goal, row.fl.live ? opts.fx : null);
       else if (row.kind === 'empty') emptyTonight(ctx, 0, y, lw, H);
-      else lobby(ctx, 0, y, lw, H);
+      else lobby(ctx, 0, y, lw, H, m.built?.includes('lobby'));
     }
     y += h;
   }
@@ -548,7 +599,8 @@ export function playOverlay(scene, towerCanvas, ringEl, m, beat) {
   const ctx = ov.getContext('2d');
   const tr = towerCanvas.getBoundingClientRect(), rr = ringEl.getBoundingClientRect();
   const tx = (tr.left - sr.left) / u, ty = (tr.top - sr.top) / u, tw = towerCanvas.width;
-  const roofY = ty + ROOF_TOP, floorY = ty + ROOF_TOP + SKY_PAD, fh = Math.round(tw / FLOOR_RATIO);
+  const rt = Number(towerCanvas.dataset.roofTop) || ROOF_TOP;
+  const roofY = ty + rt, floorY = ty + rt + SKY_PAD, fh = Math.round(tw / FLOOR_RATIO);
   const rx = (rr.left - sr.left + rr.width / 2) / u, ry = (rr.top - sr.top + rr.height / 2) / u, R = rr.width / 2 / u;
   const prot = beat.kind !== 'calorie', cal = beat.kind !== 'protein', both = beat.kind === 'both', c0 = calStart(beat.kind);
   const pw = Math.round(tw * (m.tonight?.share.protein ?? 0.33));
@@ -589,6 +641,40 @@ export function playOverlay(scene, towerCanvas, ringEl, m, beat) {
 }
 
 const FRAME_MS = 50; // 20 fps is plenty for a 4-frame pixel gait
+// ---------- Skyline backdrop ----------
+// Drawn once behind the Today tower. `roofY` is the tower's roof line in buffer rows. Windows are dim so the ring stays the focal point.
+export function drawSkyline(canvas, count, roofY) {
+  const ctx = canvas.getContext('2d');
+  const { width: w, height: h } = canvas;
+  ctx.clearRect(0, 0, w, h);
+  const sky = skylineFor(count);
+  if (sky.stars > 0) {
+    const r = rng(77);
+    ctx.fillStyle = '#ffffff';
+    for (let k = 0; k < 40; k++) {
+      const sx = Math.floor(r() * w), sy = Math.floor(r() * h * 0.6), tw = r();
+      ctx.globalAlpha = sky.stars * (0.35 + 0.5 * tw);
+      ctx.fillRect(sx, sy, 1, 1);
+    }
+  }
+  for (const c of sky.clouds) {
+    const cy = Math.round(roofY + c.dy), cx = Math.round(c.x * w);
+    if (cy < -8 || cy > h) continue;
+    ctx.globalAlpha = 0.22; ctx.fillStyle = '#b9c2ec';
+    ctx.fillRect(cx + 3, cy, c.w - 6, 3); ctx.fillRect(cx, cy + 2, c.w, 3); ctx.fillRect(cx + 7, cy - 2, Math.floor(c.w / 2), 3);
+  }
+  const r = rng(31);
+  for (const b of sky.roofs) {
+    const by = Math.round(roofY + b.dy), bx = Math.round(b.x * w);
+    if (by >= h) continue;
+    ctx.globalAlpha = 0.85; ctx.fillStyle = '#1a1e3c'; ctx.fillRect(bx, by, b.w, h - by);
+    ctx.fillStyle = '#262b52'; ctx.fillRect(bx, by, b.w, 1);
+    ctx.globalAlpha = 0.25; ctx.fillStyle = AMBER;
+    for (let wy = by + 3; wy < h - 1; wy += 4) for (let wx = bx + 2; wx < bx + b.w - 2; wx += 3) if (r() > 0.45) ctx.fillRect(wx, wy, 1, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Draws now, then loops on requestAnimationFrame only while the canvas is on screen.

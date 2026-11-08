@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { towerModel, macroShare, pickShops, celebrationFor, SHOPS } from '../js/tower.js';
+import { towerModel, macroShare, pickShops, celebrationFor, skylineFor, SCENE_BELOW_ROOF, SHOPS } from '../js/tower.js';
 
 const T = { kcal: 1800, protein: 60, carbs: 225, fat: 60 };
 const meal = (d, kcal, protein, carbs, fat) => ({ day: d, items: [{ name: 'x', kcal, protein, carbs, fat }] });
@@ -113,4 +113,23 @@ test('celebrationFor: first hit, both at once, already done, new day, going over
   // went over after dinner, then back into the band: no replay
   assert.equal(celebrationFor({ day: D, protein: true, kcal: true }, { day: D, proteinHit: true, inBand: false }), null);
   assert.equal(celebrationFor({ day: D, protein: true, kcal: true }, { day: D, proteinHit: true, inBand: true }), null);
+});
+
+test('skyline: a short tower has neighbours taller than it', () => {
+  const s = skylineFor(3);
+  assert.ok(s.roofs.some((r) => r.dy < 0));
+  assert.equal(s.stars, 0);
+});
+
+test('skyline: a very tall tower has outgrown every neighbour', () => {
+  const s = skylineFor(120);
+  assert.ok(s.roofs.every((r) => r.dy >= SCENE_BELOW_ROOF));
+  assert.equal(s.stars, 1);
+});
+
+test('skyline: neighbours sink as the tower grows, stars fade in from 30 to 100', () => {
+  assert.ok(skylineFor(25).roofs.every((r, i) => r.dy > skylineFor(3).roofs[i].dy));
+  assert.equal(skylineFor(30).stars, 0);
+  assert.ok(Math.abs(skylineFor(65).stars - 0.5) < 1e-9);
+  assert.equal(skylineFor(100).stars, 1);
 });

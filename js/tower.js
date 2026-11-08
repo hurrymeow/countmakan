@@ -83,3 +83,22 @@ export function celebrationFor(done, now) {
   const k = !!now.inBand && !seen.kcal;
   return p && k ? 'both' : p ? 'protein' : k ? 'calorie' : null;
 }
+
+// ---------- Skyline ----------
+// Neighbour roofs, clouds and stars sit at fixed altitudes (in floors), so how far they fall
+// below the tower's roof line shows how tall the tower is. `dy` is in buffer rows, measured down
+// from the tower's roof line. Negative means above it.
+export const ROWS_PER_FLOOR = 1.5;
+export const SCENE_BELOW_ROOF = 100; // buffer rows of scene under the roof line on Today. A roof at or past this is off screen.
+const NEIGHBOURS = [
+  { alt: 8, x: 0.05, w: 16 }, { alt: 13, x: 0.2, w: 14 }, { alt: 18, x: 0.37, w: 18 }, { alt: 23, x: 0.52, w: 15 },
+  { alt: 28, x: 0.66, w: 17 }, { alt: 33, x: 0.8, w: 14 }, { alt: 38, x: 0.9, w: 16 },
+];
+const CLOUDS = [
+  { alt: 42, x: 0.08, w: 22 }, { alt: 52, x: 0.6, w: 26 }, { alt: 86, x: 0.3, w: 24 }, { alt: 95, x: 0.72, w: 20 },
+];
+export function skylineFor(count) {
+  const at = (o) => ({ ...o, dy: (count - o.alt) * ROWS_PER_FLOOR });
+  const stars = Math.max(0, Math.min(1, (count - 30) / 70));
+  return { roofs: NEIGHBOURS.map(at), clouds: CLOUDS.map(at), stars };
+}

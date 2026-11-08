@@ -9,7 +9,7 @@ import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
 import { towerModel, celebrationFor } from './tower.js';
-import { animate, startBeat, playOverlay } from './tower-art.js';
+import { animate, drawSkyline, startBeat, playOverlay } from './tower-art.js';
 import { openTower } from './tower-view.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
 import { suggestTargets, goalHint, ACTIVITY, GOAL_CHOICES } from './suggest.js';
@@ -291,6 +291,16 @@ function fillScene(slot, m, beat = null) {
   const canvas = document.createElement('canvas');
   slot.replaceChildren(canvas);
   stopScene = animate(canvas, m, { W: Math.round(slot.clientWidth) || 190, mode: 'today', limit: 4, ground: m.count <= 4, goal: state.targets.kcal, beat });
+  // A taller roof (spire) pushes the canvas up so the floors stay put. Then the skyline draws behind it.
+  const rt = Number(canvas.dataset.roofTop) || 15;
+  slot.style.top = `${60 - (rt - 15) * 2}px`;
+  const scene = slot.parentElement;
+  scene.querySelector('.scene-sky')?.remove();
+  const sky = document.createElement('canvas');
+  sky.className = 'scene-sky'; sky.setAttribute('aria-hidden', 'true');
+  sky.width = Math.ceil(scene.clientWidth / 2); sky.height = Math.ceil(scene.clientHeight / 2);
+  scene.prepend(sky);
+  drawSkyline(sky, m.count, (slot.offsetTop + rt * 2) / 2);
 }
 
 // ---------- Meal lists ----------

@@ -29,7 +29,7 @@ async function seed(page, floors) {
 
 const overlaps = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-for (const floors of [0, 3, 45, 120]) {
+for (const floors of [0, 3, 25, 45, 65, 120]) {
   test(`tower: ${floors} floors on Today`, async ({ page }) => {
     await seedKeys(page);
     await open(page);
@@ -50,6 +50,23 @@ for (const floors of [0, 3, 45, 120]) {
     if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/today-${floors}.png`, fullPage: true });
   });
 }
+
+test('tower: the spire clears the date and the ring at 65 floors', async ({ page }) => {
+  await seedKeys(page);
+  await open(page);
+  await seed(page, 65);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  const canvas = page.locator('#summary .scene-tower canvas');
+  await expect(canvas).toHaveAttribute('data-roof-top', '45');
+  const c = await canvas.boundingBox();
+  // The spire is a thin column at the centre of the canvas, rising above the roof.
+  const spire = { x: c.x + c.width / 2 - 12, y: c.y, width: 24, height: 80 };
+  expect(overlaps(spire, await page.locator('#summary .scene-date').boundingBox())).toBe(false);
+  expect(overlaps(spire, await page.locator('#summary .ring-wrap').boundingBox())).toBe(false);
+  expect(await page.locator('#summary .scene-sky').count()).toBe(1);
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/today-65-spire.png`, fullPage: true });
+});
 
 test('tower: tap-in view opens at the top, closes with Escape and Back', async ({ page }) => {
   await seedKeys(page);
