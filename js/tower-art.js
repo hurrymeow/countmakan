@@ -282,6 +282,35 @@ function walker(ctx, w, st, x, y, W, H, cheer = 0, t = 0) {
   R(SKIN[w.look], -2, top, 4, 4); R('#2a1e18', -2, top, 4, 1); R('#2a1e18', -2, top + 1, 1, 2); R('#1a1a1a', 1, top + 2, 1, 1);
 }
 
+// A floor still under construction: bare concrete, poles, planks, braces, a green tarp, a cone and a cement bag.
+function scaffold(ctx, x, y, W, H, r) {
+  ctx.fillStyle = '#2b2e3b'; ctx.fillRect(x, y, W, H);
+  ctx.fillStyle = '#343746';
+  for (let k = 3; k < W; k += 5) ctx.fillRect(x + k, y, 1, H);
+  ctx.fillStyle = '#23252f'; ctx.fillRect(x, y + H - 3, W, 3);
+  const pole = '#a88a55', plank = '#c9a35e', shade = '#6b512d';
+  for (const f of [0.28, 0.55, 0.82]) { // 3 plank rows
+    const py = y + Math.round(H * f);
+    ctx.fillStyle = plank; ctx.fillRect(x, py, W, 2);
+    ctx.fillStyle = shade; ctx.fillRect(x, py + 2, W, 1);
+  }
+  for (let px = 4; px < W; px += 16) { // poles and braces
+    ctx.fillStyle = pole; ctx.fillRect(x + px, y, 2, H);
+    const y0 = y + Math.round(H * 0.28), y1 = y + Math.round(H * 0.82);
+    ctx.fillStyle = shade;
+    for (let k = 0; k < 14 && px + k < W - 2; k++) ctx.fillRect(x + px + 2 + k, y0 + Math.round(((y1 - y0) * k) / 14), 1, 1);
+  }
+  const tx = x + Math.round(W * 0.3), tw = Math.round(W * 0.4), ty = y + Math.round(H * 0.28) + 3, th = Math.round(H * 0.5) - 3;
+  ctx.fillStyle = '#2f7d57'; ctx.fillRect(tx, ty, tw, th);
+  ctx.fillStyle = '#3a9468'; for (let k = 0; k < tw; k += 4) ctx.fillRect(tx + k, ty, 2, th);
+  ctx.fillStyle = '#1f5a3d'; ctx.fillRect(tx, ty + th - 2, tw, 2);
+  const cx = x + Math.round(W * 0.14) + Math.floor(r() * 4), by = y + H - 4;
+  ctx.fillStyle = '#e8742a'; ctx.fillRect(cx, by - 5, 3, 5); ctx.fillRect(cx - 1, by - 1, 5, 1);
+  ctx.fillStyle = '#f3ead2'; ctx.fillRect(cx, by - 3, 3, 1);
+  ctx.fillStyle = '#b9b3a2'; ctx.fillRect(x + W - 16, by - 4, 8, 4);
+  ctx.fillStyle = '#8f8a7b'; ctx.fillRect(x + W - 16, by - 2, 8, 1);
+}
+
 // The still part of a floor: walls, floors, lamps and slab. Props, neon, walkers and the live dim move or change,
 // so floor() draws them each frame on top of this cached copy.
 function floorStatic(ctx, x, y, W, H, fl) {
@@ -289,25 +318,10 @@ function floorStatic(ctx, x, y, W, H, fl) {
   const r = rng(seed);
   const segs = [];
   let sx = x;
-  [fl.share.protein, fl.share.carbs, fl.share.fat].forEach((s, i) => {
+  if (fl.messy) scaffold(ctx, x, y, W, H, r);
+  else [fl.share.protein, fl.share.carbs, fl.share.fat].forEach((s, i) => {
     const sw = i === 2 ? x + W - sx : Math.round(W * s);
-    if (fl.messy) {
-      ctx.fillStyle = mix(MAC[i], '#1a1c26', 0.82); ctx.fillRect(sx, y, sw, H);
-      ctx.fillStyle = mix(MAC[i], '#0d0e14', 0.75); // brick flecks
-      for (let k = 0; k < (sw * H) / 14; k++) ctx.fillRect(sx + Math.floor(r() * sw), y + Math.floor(r() * H), 2, 1);
-      const ix = sx + 2, iw = sw - 4, iy = y + 6, ih = H - 8;
-      ctx.fillStyle = mix(MAC[i], '#f3ead2', 0.2); ctx.fillRect(ix, iy, iw, ih);
-      ctx.fillStyle = mix(MAC[i], '#f3ead2', 0.1); ctx.fillRect(ix, iy + Math.floor(ih * 0.3), iw, 1);
-      for (let k = 2; k < iw - 2; k += 4) {
-        ctx.fillStyle = ['#c94f4f', '#e7c34a', '#3a3f55', '#7fd0ff', '#57c08a'][Math.floor(r() * 5)];
-        if (r() < 0.7) ctx.fillRect(ix + k, iy + Math.floor(ih * 0.3) - 2, 2, 2);
-      }
-      for (let k = 0; k < iw; k += 2) {
-        ctx.fillStyle = (k / 2) % 2 ? mix(MAC[i], '#0d0e14', 0.5) : mix(MAC[i], '#0d0e14', 0.3);
-        ctx.fillRect(ix + k, y + H - 4, 2, 2);
-      }
-      ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(ix + 2, iy + 1, 1, 4); ctx.fillRect(ix + 3, iy + 1, 1, 2);
-    } else if (sw > 0) {
+    if (sw > 0) {
       const shop = fl.shops[i], S = SHOP[shop];
       ctx.fillStyle = mix(MAC[i], '#1a1c26', 0.6); ctx.fillRect(sx, y, sw, H);
       const style = (seed >>> (i * 3)) % 3; // awning: stripes, pale stripes or solid with scallops
@@ -330,12 +344,6 @@ function floorStatic(ctx, x, y, W, H, fl) {
     ctx.fillStyle = '#12141c'; ctx.fillRect(sx, y, 1, H);
     sx += sw;
   });
-  if (fl.messy) { // boxes and tape
-    ctx.fillStyle = '#8a6a3c'; ctx.fillRect(x + 6, y + H - 9, 6, 5); ctx.fillRect(x + 10, y + H - 13, 5, 4); ctx.fillRect(x + W - 16, y + H - 10, 7, 6);
-    ctx.fillStyle = '#6b512d'; ctx.fillRect(x + 6, y + H - 7, 6, 1); ctx.fillRect(x + W - 16, y + H - 7, 7, 1);
-    ctx.fillStyle = '#e7c34a';
-    for (let k = 0; k < 14; k++) ctx.fillRect(x + Math.floor(W / 2) - 7 + k, y + 8 + Math.floor(k / 3), 1, 1);
-  }
   ctx.fillStyle = '#12141c'; ctx.fillRect(x + W - 1, y, 1, H);
   ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
   ctx.fillStyle = '#3a3d4c'; ctx.fillRect(x - 1, y + H + 1, W + 2, 1);
@@ -709,4 +717,43 @@ export function animate(canvas, m, opts = {}) {
   io.observe(canvas);
   raf = requestAnimationFrame(frame);
   return () => { stopped = true; io.disconnect(); cancelAnimationFrame(raf); };
+}
+
+// ---------- overview rail ----------
+export const RAIL_W = 20;
+const RAIL_TICKS = [5, 20, 60, 100];
+// Draws the whole tower as thin bands, newest at the top: one band per floor split by macro share, grey if messy.
+// Returns { h, top, bandH }; h is the drawn height in CSS px.
+export function drawRail(canvas, m, avail) {
+  const rows = (m.tonight ? 1 : 0) + m.floors.length + 1; // tonight, floors, ground
+  const cap = m.built.includes('beacon') || m.built.includes('spire') ? 8 : 0;
+  const bandH = Math.max(1, Math.min(4, Math.floor((avail - cap) / rows)));
+  const h = cap + rows * bandH;
+  canvas.width = RAIL_W; canvas.height = h;
+  canvas.style.width = `${RAIL_W}px`; canvas.style.height = `${h}px`;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, RAIL_W, h);
+  if (cap) {
+    ctx.fillStyle = '#9aa0b4'; ctx.fillRect(9, 0, 2, cap);
+    if (m.built.includes('beacon')) { ctx.fillStyle = '#ff4d4d'; ctx.fillRect(8, 0, 4, 3); } else { ctx.fillStyle = '#d94a4a'; ctx.fillRect(9, 0, 2, 2); }
+  }
+  const draw = (fl, row) => {
+    const y = cap + row * bandH, hh = Math.max(1, bandH - (bandH > 2 ? 1 : 0));
+    if (fl.messy) { ctx.fillStyle = '#6d7183'; ctx.fillRect(0, y, RAIL_W, hh); return; }
+    const w0 = Math.round(RAIL_W * fl.share.protein), w1 = Math.round(RAIL_W * (fl.share.protein + fl.share.carbs));
+    ctx.fillStyle = MAC[0]; ctx.fillRect(0, y, w0, hh);
+    ctx.fillStyle = MAC[1]; ctx.fillRect(w0, y, w1 - w0, hh);
+    ctx.fillStyle = MAC[2]; ctx.fillRect(w1, y, RAIL_W - w1, hh);
+  };
+  let row = 0;
+  if (m.tonight) { draw(m.tonight, row); ctx.fillStyle = 'rgba(13,14,20,.45)'; ctx.fillRect(0, cap, RAIL_W, bandH); row++; }
+  for (let i = m.floors.length - 1; i >= 0; i--) draw(m.floors[i], row++);
+  ctx.fillStyle = '#5a5e70'; ctx.fillRect(0, cap + row * bandH, RAIL_W, bandH);
+  ctx.fillStyle = '#f2b84b'; // amber ticks at milestone floors, counted from the ground
+  for (const n of RAIL_TICKS) {
+    if (n > m.count) continue;
+    const y = cap + ((m.tonight ? 1 : 0) + (m.count - n)) * bandH;
+    ctx.fillRect(0, y, 5, 1); ctx.fillRect(RAIL_W - 5, y, 5, 1);
+  }
+  return { h, top: cap, bandH };
 }

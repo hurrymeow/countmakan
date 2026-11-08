@@ -78,7 +78,7 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await page.locator('#summary .scene').click();
   await expect(view).toBeVisible();
   await expect(view.locator('.tower-sub')).toContainText('45 floors');
-  await expect(view.locator('canvas')).toHaveAttribute('data-floors', '45');
+  await expect(view.locator('.tower-stack canvas')).toHaveAttribute('data-floors', '45');
   await expect(view.locator('.tower-scroll')).toHaveJSProperty('scrollTop', 0);
   if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/view-top.png` });
   await view.locator('.tower-scroll').evaluate((n) => { n.scrollTop = n.scrollHeight; });
@@ -92,6 +92,35 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await page.locator('#summary .scene').click();
   await view.getByRole('button', { name: 'Close tower' }).click();
   await expect(view).toBeHidden();
+});
+
+test('tower: overview rail jumps to the lobby', async ({ page }) => {
+  await seedKeys(page);
+  await open(page);
+  await seed(page, 45);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  const view = page.locator('.tower-view');
+  await page.locator('#summary .scene').click();
+  const rail = view.locator('.tower-rail');
+  await expect(rail).toBeVisible();
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/rail-top.png` });
+  const b = await rail.boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height - 2);
+  const gap = await view.locator('.tower-scroll').evaluate((n) => n.scrollHeight - n.clientHeight - n.scrollTop);
+  expect(gap).toBeLessThan(40);
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/rail-ground.png` });
+});
+
+test('tower: overview rail is hidden on a short tower', async ({ page }) => {
+  await seedKeys(page);
+  await open(page);
+  await seed(page, 3);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await page.locator('#summary .scene').click();
+  await expect(page.locator('.tower-view .tower-stack')).toBeVisible();
+  await expect(page.locator('.tower-view .tower-rail')).toBeHidden();
 });
 
 test('tower: Today canvas draws pixels and ground shows for a short tower', async ({ page }) => {
