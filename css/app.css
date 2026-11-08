@@ -480,6 +480,12 @@ body:has(.sheet[open]) { overflow: hidden; }
 .tower-head { display: flex; justify-content: space-between; align-items: center; padding: var(--s-3) var(--s-4); background: rgb(10 10 10 / .92); border-bottom: 1px solid var(--border); flex: none; }
 .tower-head h2 { margin: 0; font-size: 1.0625rem; }
 .tower-close { width: 44px; height: 44px; font-size: 1.5rem; line-height: 1; background: none; border: 0; color: var(--text-2); cursor: pointer; }
+.tower-body { flex: 1; min-height: 0; display: flex; align-items: flex-start; gap: 0; }
+.tower-rail { flex: none; position: relative; width: 20px; margin: 4px 8px 0 0; touch-action: none; cursor: pointer; }
+.tower-rail[hidden] { display: none; }
+.tower-rail canvas { display: block; image-rendering: pixelated; }
+.tower-rail-box { position: absolute; left: -2px; right: -2px; border: 2px solid #fff; border-radius: 2px; box-shadow: 0 0 0 1px rgb(0 0 0 / .5); pointer-events: none; }
+.tower-body > .tower-scroll { align-self: stretch; }
 .tower-scroll { flex: 1; overflow-y: auto; background: linear-gradient(#0d1230, #2b2655 80%, #8a5a6e); padding-top: var(--s-6); overscroll-behavior: contain; }
 .tower-empty { margin: 0 var(--s-6) var(--s-4); padding: var(--s-4); text-align: center; color: var(--text-2); background: rgb(14 14 24 / .72); border-radius: var(--r); }
 .tower-empty strong { color: var(--text); }
