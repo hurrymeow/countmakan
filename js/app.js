@@ -1,4 +1,4 @@
-import { CHAIN, DEFAULT_TARGETS, THUMB_MAX_PX, KEEP_MAX_PX, MODEL_MAX_PX, MODEL_JPEG_QUALITY, PROVIDER_LABELS, OPTIONAL_PROVIDERS } from './config.js';
+import { CHAIN, DEFAULT_TARGETS, THUMB_MAX_PX, KEEP_MAX_PX, MODEL_MAX_PX, MODEL_JPEG_QUALITY, PROVIDER_LABELS, OPTIONAL_PROVIDERS, WAIT_CHOICES, DEFAULT_WAIT_S } from './config.js';
 import { estimate, testKey, applyOrder, stepId } from './chain.js';
 import { totals } from './schema.js';
 import { loadFavs, saveFavs, favRefs, mergeFavs, favKcal } from './favs.js';
@@ -23,6 +23,16 @@ const GOAL_LABELS = {
   sugar: 'Sugar limit (g)', fibre: 'Fibre (g)', sodium: 'Sodium limit (mg)',
 };
 const SLOW_MS = 30000;
+
+const WAIT_KEY = 'countmakan.waitS';
+function loadWait() {
+  try {
+    const n = Number(localStorage.getItem(WAIT_KEY));
+    return WAIT_CHOICES.includes(n) ? n : DEFAULT_WAIT_S;
+  } catch {
+    return DEFAULT_WAIT_S;
+  }
+}
 
 const ORDER_KEY = 'countmakan.order';
 const chain = () => applyOrder(CHAIN, state.order);
@@ -453,6 +463,7 @@ async function runEstimate() {
     };
     const out = await estimate(input, state.keys, {
       chain: chain(),
+      stepCapMs: loadWait() * 1000,
       signal: abort.signal,
       onAttempt: (_step, i) => {
         setStep('sent', 'done', photo ? 'Photo sent' : 'Description sent');
@@ -981,6 +992,13 @@ async function boot() {
   });
   $('#test-keys').addEventListener('click', onTestKeys);
   $('#make-link').addEventListener('click', onMakeLink);
+  const waitSel = $('#wait-s');
+  waitSel.innerHTML = WAIT_CHOICES.map((n) => `<option value="${n}">${n} seconds</option>`).join('');
+  waitSel.value = String(loadWait());
+  waitSel.addEventListener('change', () => {
+    try { localStorage.setItem(WAIT_KEY, waitSel.value); } catch { /* Storage blocked. */ }
+    toast('Saved ✓');
+  });
   $('#reset-order').addEventListener('click', () => { saveOrder([]); renderChain(); toast('Provider order reset.'); });
   $('#own-key').addEventListener('click', openOwnKeySetup);
   $('#save-targets').addEventListener('click', onSaveTargets);

@@ -78,10 +78,11 @@ function wait(ms, signal) {
 
 // attempts lists every step tried or skipped, with ms per real call, for display and debugging.
 // onAttempt(step, index) fires before each real call, so the UI can say "trying another way".
+// stepCapMs lowers every earlier step's cap (the user's wait setting). The last step ignores it.
 // timeoutMs is the budget for the last usable step. Earlier steps use their own shorter cap.
 export async function estimate(input, keys, {
   chain = CHAIN, fetchFn = fetch, timeoutMs = TIMEOUT_MS, signal, onAttempt, now = () => performance.now(),
-  clock = Date.now, cooldown = timedOut, retryDelayMs = RETRY_DELAY_MS,
+  clock = Date.now, cooldown = timedOut, retryDelayMs = RETRY_DELAY_MS, stepCapMs = Infinity,
 } = {}) {
   const kind = input.image ? 'image' : 'text';
   const attempts = [];
@@ -127,7 +128,7 @@ export async function estimate(input, keys, {
       attempts.push({ ...step, skipped: 'timed out recently' });
       continue;
     }
-    const budget = step === last ? timeoutMs : Math.min(step.timeoutMs ?? timeoutMs, timeoutMs);
+    const budget = step === last ? timeoutMs : Math.min(step.timeoutMs ?? timeoutMs, timeoutMs, stepCapMs);
     const out = await run(step, budget);
     if (out) return out;
   }
