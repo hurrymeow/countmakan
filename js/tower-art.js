@@ -1,7 +1,7 @@
 // Tower rendering. Floor data in, pixels out. Everything is drawn in code on a low-res canvas
 // that the browser scales up with no smoothing, so the pixels stay crisp at any size.
 // Each floor is split left to right by macro share. Each shop has its own wall, floor and two props,
-// with one small moving detail. Goal beats (neon, flag, fireworks) are drawn here too.
+// with one small moving detail. People walk between two props and do that shop's action at each. Goal beats (neon, flag, fireworks) are drawn here too.
 import { hash, skylineFor } from './tower.js';
 
 // Floor aspect: width over height, in the low-res buffer.
@@ -376,7 +376,8 @@ function floor(ctx, x, y, W, H, fl, t, goal, fx = null) {
   const n = fl.live ? 1 : fl.walkers;
   if (n > 0) {
     ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y, W - 2, H); ctx.clip();
-    for (const w of walkersFor(seed, n, W)) walker(ctx, w, walkerState(w, t, W), x, y, W, H, fl.live && fx?.cheer ? 1 : 0, t);
+    if (fl.live && fx?.cheer) for (const w of walkersFor(seed, n, W)) walker(ctx, w, walkerState(w, t, W), x, y, W, H, 1, t);
+    else actors(ctx, c.segs, fl, seed, n, x, y, W, H, t);
     ctx.restore();
   }
   if (fl.live) {
@@ -737,4 +738,111 @@ export function drawRail(canvas, m, avail) {
     ctx.fillRect(0, y, 5, 1); ctx.fillRect(RAIL_W - 5, y, 5, 1);
   }
   return { h, top: cap, bandH };
+}
+
+// ---------- in-room activities ----------
+// Each shop prop is a station with an action. Each person loops: act at A, walk to B, act at B, walk back.
+export const ALOOP = 12;
+const ACTS = {
+  sport: ['lift', 'run'], boxing: ['punch', 'punch'], pool: ['swim', 'sit'], dojo: ['kick', 'sit'],
+  office: ['type', 'chat'], bakery: ['knead', 'browse'], noodle: ['slurp', 'chat'], pizza: ['toss', 'eat'],
+  butch: ['chop', 'browse'], fish: ['chop', 'browse'], deli: ['slice', 'browse'], nut: ['scoop', 'browse'],
+};
+// where to stand relative to the prop centre, and which way to face
+const SPOT = {
+  lift: [0, 1], run: [-1, -1], punch: [-5, 1], swim: [-3, 1], kick: [-3, 1], sit: [-2, 1], type: [-8, 1], chat: [3, -1],
+  knead: [-2, 1], browse: [-6, 1], slurp: [-3, 1], toss: [5, -1], eat: [3, -1], chop: [-1, 1], slice: [5, -1], scoop: [-6, 1],
+};
+export function stations(segs, seed, x, busy) {
+  const out = [];
+  for (const sg of segs) {
+    if (sg.sw <= 14) continue;
+    const sx = sg.sx - 1 + x;
+    let slot = seed % 2;
+    for (let cx = sx + 10; cx < sx + sg.sw - 7; cx += busy ? 14 : 21) {
+      const act = ACTS[sg.shop][slot++ % 2];
+      out.push({ act, x: cx + SPOT[act][0], dir: SPOT[act][1], lo: sx + 3, hi: sx + sg.sw - 3 });
+    }
+  }
+  return out;
+}
+function actors(ctx, segs, fl, seed, n, x, y, W, H, t) {
+  const st = stations(segs, seed, x, fl.busy);
+  if (!st.length) return;
+  const r = rng(seed * 7 + 1);
+  const order = st.map((s, i) => [r(), i]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y, W - 2, H); ctx.clip();
+  for (let i = 0; i < n; i++) {
+    const a = st[order[i % order.length]];
+    // second station: nearest other one
+    let b = a, best = 1e9;
+    for (const s of st) { const d = Math.abs(s.x - a.x); if (s !== a && d < best && d < 60) { best = d; b = s; } }
+    const look = Math.floor(r() * 6), off = r() * ALOOP;
+    const u = reduced() ? 0.15 : ((t + off) % ALOOP) / ALOOP; // 0..1; reduced motion holds everyone mid-action at A
+    const w = { dir: 1, look };
+    let px, act, dir, frame = 0, ph;
+    if (u < 0.33) { px = a.x; act = a.act; dir = a.dir; }
+    else if (u < 0.5) { const k = (u - 0.33) / 0.17; px = a.x + (b.x - a.x) * k; act = 'walk'; dir = b.x >= a.x ? 1 : -1; frame = Math.floor(Math.abs(b.x - a.x) * k / 3) % 4; }
+    else if (u < 0.83) { px = b.x; act = b.act; dir = b.dir; }
+    else { const k = (u - 0.83) / 0.17; px = b.x + (a.x - b.x) * k; act = 'walk'; dir = a.x >= b.x ? 1 : -1; frame = Math.floor(Math.abs(b.x - a.x) * k / 3) % 4; }
+    if (b === a && act === 'walk') { act = a.act; px = a.x; dir = a.dir; }
+    w.dir = dir;
+    ph = Math.floor((t + off) * (act === 'run' ? 8 : act === 'slurp' || act === 'eat' || act === 'chat' || act === 'browse' ? 1.5 : 3.5)) % 2;
+    pose(ctx, w, act, ph, frame, Math.round(px), y + H - 3, t + off);
+  }
+  ctx.restore();
+}
+function pose(ctx, w, act, ph, frame, px, b, t) {
+  const d = w.dir, P = PANTS[w.look], S = SHIRT[w.look], K = SKIN[w.look];
+  const R = (c, dx, dy, ww, hh) => { ctx.fillStyle = c; ctx.fillRect(px + (d > 0 ? dx : -dx - ww + 1), dy, ww, hh); };
+  if (act === 'walk') { walker(ctx, w, { x: 0, frame }, px, 0, 0, b + 3); return; }
+  if (act === 'swim') { // head and a stroking arm above the water line
+    const top = b - 5 + (ph ? 1 : 0);
+    R(K, -2, top, 4, 4); R('#2a1e18', -2, top, 4, 1); R('#1a1a1a', 1, top + 2, 1, 1);
+    if (ph) { R(K, 3, top - 3, 1, 3); R(K, 2, top - 3, 1, 1); } else { R(K, -4, top + 2, 2, 1); R('#ffffff', 4, b - 3, 1, 1); R('#ffffff', -5, b - 3, 1, 1); }
+    return;
+  }
+  const seated = act === 'type' || act === 'slurp' || act === 'eat' || act === 'sit';
+  const bend = act === 'scoop' && ph ? 2 : 0;
+  let top = b - 14 + (seated ? 3 : 0) + bend;
+  // legs
+  if (act === 'run') {
+    if (ph) { R(P, -2, b - 5, 1, 3); R(P, -3, b - 2, 1, 2); R(P, 1, b - 5, 1, 3); R(P, 2, b - 2, 1, 2); R('#1a1a1a', -4, b - 1, 2, 1); R('#1a1a1a', 2, b - 1, 2, 1); }
+    else { R(P, -1, b - 6, 2, 6); R('#1a1a1a', -1, b - 1, 3, 1); top -= 1; }
+  } else if (act === 'kick' && ph) {
+    R(P, -2, b - 6, 1, 6); R('#1a1a1a', -3, b - 1, 2, 1); R(P, -1, b - 6, 5, 1); R('#1a1a1a', 4, b - 6, 1, 1); top -= 1;
+  } else if (act === 'sit' && w.look % 2) { // cross-legged on the floor
+    top = b - 9; R(P, -3, b - 2, 6, 2); R('#1a1a1a', -3, b - 1, 1, 1); R('#1a1a1a', 2, b - 1, 1, 1);
+  } else if (seated) {
+    R('#6b4a3a', -3, b - 4, 4, 1); R('#5a5f6b', -2, b - 3, 1, 3); // stool
+    R(P, -2, b - 6, 4, 2); R(P, 1, b - 4, 1, 3); R('#1a1a1a', 1, b - 1, 2, 1);
+  } else { R(P, -1, b - 6, 2, 6); R(mix(P, '#000000', 0.4), 0, b - 3, 1, 3); R('#1a1a1a', -1, b - 1, 3, 1); }
+  // torso and head
+  R(S, -2, top + 5, 4, 5 - (seated ? 1 : 0)); R(mix(S, '#000000', 0.25), -2, top + 9 - (seated ? 1 : 0), 4, 1);
+  const hx = bend ? 1 : 0;
+  R(K, -2 + hx, top, 4, 4); R('#2a1e18', -2 + hx, top, 4, 1); R('#2a1e18', -2 + hx, top + 1, 1, 2); R('#1a1a1a', 1 + hx, top + 2, 1, 1);
+  // arms and tools
+  const sh = top + 5;
+  switch (act) {
+    case 'lift': {
+      const hy = ph ? top - 2 : sh;
+      R(K, -3, hy, 1, sh - hy + 2); R(K, 2, hy, 1, sh - hy + 2);
+      R('#2b2f3a', -6, hy, 12, 1); R('#c94f4f', -7, hy - 1, 1, 3); R('#c94f4f', 6, hy - 1, 1, 3); break; }
+    case 'punch': if (ph) R(K, 2, sh + 1, 4, 1); else R(K, 2, sh + 1, 1, 2); R('#c94f4f', ph ? 6 : 3, sh, 2, 2); break;
+    case 'kick': R(K, -3, sh, 1, 2); R(K, 2, sh - 1, 1, 2); break;
+    case 'type': R(K, 2, sh + 2, 2 + ph, 1); break;
+    case 'knead': R(K, 2, sh + 2 + ph, 3, 1); R('#e8d6a0', 4, sh + 3 + ph, 3, 1); break;
+    case 'toss': { const dy = [0, -3, -5, -3][Math.floor(t * 6) % 4]; R(K, 1, top - 1, 1, 6); R('#e8c07a', -1, top - 3 + dy, 5, 1); R('#c94f4f', 1, top - 3 + dy, 1, 1); break; }
+    case 'chop': case 'slice':
+      if (ph) { R(K, 2, sh - 4, 1, 5); R('#c9c2ae', 2, sh - 6, 3, 2); } else { R(K, 2, sh + 1, 3, 1); R('#c9c2ae', 5, sh, 2, 2); }
+      R('#e8e2d0', -2, sh, 4, 4); break; // apron
+    case 'slurp': case 'eat':
+      if (ph) { R(K, 2, sh, 1, 2); R('#e8e2d0', 2, top + 3, 3, 2); } else { R(K, 2, sh + 2, 2, 1); R('#e8e2d0', 4, sh + 2, 3, 2); }
+      if (act === 'slurp' && !ph) { R('rgba(255,255,255,.5)', 5, sh - 1, 1, 2); } break;
+    case 'scoop': R(K, 2, sh + 2, 1, 3); R('#9aa0b0', 2, sh + 5, 2, 1); break;
+    case 'chat': R(K, 2, sh + 1, 1, 3); if (ph) { R('#ffffff', 2, top - 6, 6, 4); R('#ffffff', 3, top - 2, 1, 1); R('#1a1a1a', 3, top - 5, 1, 1); R('#1a1a1a', 5, top - 5, 1, 1); } break;
+    case 'sit': R(K, -3, sh + 2, 1, 2); R(K, 2, sh + 2, 1, 2); if (ph && w.look % 2) R('rgba(255,255,255,.5)', 0, top - 3, 1, 1); break;
+    case 'browse': R(K, 2, sh + (ph ? 0 : 2), 1, ph ? 2 : 2); if (ph) R(K, 3, sh, 1, 1); break;
+    default: R(K, -1, sh + 1, 1, 3);
+  }
 }
