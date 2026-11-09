@@ -237,3 +237,14 @@ test('estimate follows a reordered chain', async () => {
   assert.deepEqual(f.calls, ['g2']);
   assert.equal(out.model, 'g2');
 });
+
+test('stepCapMs lowers an earlier step cap but not the last step', async () => {
+  const slow = [{ ...CHAIN[0], timeoutMs: 5000 }, CHAIN[1]];
+  const f = async (url, init) => (url.includes('g1') ? hanging()(url, init) : res(200, deepseekOk));
+  const out = await estimate({ text: 'egg' }, KEYS, { chain: slow, fetchFn: f, timeoutMs: 5000, stepCapMs: 20, cooldown: new Map() });
+  assert.equal(out.model, 'd1');
+  assert.ok(out.attempts[0].ms < 1000);
+
+  const solo = await estimate({ text: 'egg' }, { gemini: 'gk' }, { chain: slow, fetchFn: hanging(60), timeoutMs: 5000, stepCapMs: 20, cooldown: new Map() });
+  assert.equal(solo.model, 'g1');
+});

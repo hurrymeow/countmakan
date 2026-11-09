@@ -57,3 +57,7 @@ export const MAX_REFS = 20;
 export const GOOGLE_CLIENT_ID = '949780689105-f1afhqjrdc9aemvatebmveuod2i03tjq.apps.googleusercontent.com';
 export const HEALTH_SCOPE = 'https://www.googleapis.com/auth/googlehealth.nutrition.writeonly';
 export const HEALTH_API = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints';
+
+// User setting: longest wait on a model before trying the next. Seconds. Last model is not capped.
+export const WAIT_CHOICES = [10, 15, 20, 30];
+export const DEFAULT_WAIT_S = 15;

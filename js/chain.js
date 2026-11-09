@@ -58,7 +58,28 @@ export function applyOrder(chain, ids) {
 
 // Walks the chain. Returns { items, usage, provider, model, attempts }.
 // Step id -> time it timed out. Lives for the page session.
-const timedOut = new Map();
+// Saved in localStorage so a reload or a killed PWA still skips a hung model.
+const COOLDOWN_KEY = 'countmakan.cooldown';
+function loadTimedOut() {
+  const map = new Map();
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem(COOLDOWN_KEY));
+    for (const [id, t] of Object.entries(saved || {})) {
+      if (Number.isFinite(t) && Date.now() - t < COOLDOWN_MS) map.set(id, t);
+    }
+  } catch {
+    // No storage or bad data. Start empty.
+  }
+  return map;
+}
+function saveTimedOut(map) {
+  try {
+    globalThis.localStorage?.setItem(COOLDOWN_KEY, JSON.stringify(Object.fromEntries(map)));
+  } catch {
+    // Storage blocked. The skip still holds until the app closes.
+  }
+}
+const timedOut = loadTimedOut();
 
 // Resolves after ms, or rejects with a cancel when signal aborts.
 function wait(ms, signal) {
@@ -78,10 +99,11 @@ function wait(ms, signal) {
 
 // attempts lists every step tried or skipped, with ms per real call, for display and debugging.
 // onAttempt(step, index) fires before each real call, so the UI can say "trying another way".
+// stepCapMs lowers every earlier step's cap (the user's wait setting). The last step ignores it.
 // timeoutMs is the budget for the last usable step. Earlier steps use their own shorter cap.
 export async function estimate(input, keys, {
   chain = CHAIN, fetchFn = fetch, timeoutMs = TIMEOUT_MS, signal, onAttempt, now = () => performance.now(),
-  clock = Date.now, cooldown = timedOut, retryDelayMs = RETRY_DELAY_MS,
+  clock = Date.now, cooldown = timedOut, retryDelayMs = RETRY_DELAY_MS, stepCapMs = Infinity,
 } = {}) {
   const kind = input.image ? 'image' : 'text';
   const attempts = [];
@@ -100,11 +122,14 @@ export async function estimate(input, keys, {
       onAttempt?.(step, tries());
       const out = await callProvider(step, input, keys[step.provider], { fetchFn, timeoutMs: budget, signal });
       attempts.push({ ...step, ok: true, ms: ms() });
-      cooldown.delete(stepId(step));
+      if (cooldown.delete(stepId(step)) && cooldown === timedOut) saveTimedOut(timedOut);
       return { ...out, provider: step.provider, model: step.model, attempts };
     } catch (e) {
       attempts.push({ ...step, error: e.message, status: e.status || 0, kind: e.kind || 'other', ms: ms() });
-      if (e.kind === 'timeout') cooldown.set(stepId(step), clock());
+      if (e.kind === 'timeout') {
+        cooldown.set(stepId(step), clock());
+        if (cooldown === timedOut) saveTimedOut(timedOut);
+      }
       if (!(e instanceof ProviderError) || !e.retryable) {
         const err = new ProviderError(`${step.model}: ${e.message}`, { status: e.status, kind: e.kind });
         err.attempts = attempts;
@@ -127,7 +152,7 @@ export async function estimate(input, keys, {
       attempts.push({ ...step, skipped: 'timed out recently' });
       continue;
     }
-    const budget = step === last ? timeoutMs : Math.min(step.timeoutMs ?? timeoutMs, timeoutMs);
+    const budget = step === last ? timeoutMs : Math.min(step.timeoutMs ?? timeoutMs, timeoutMs, stepCapMs);
     const out = await run(step, budget);
     if (out) return out;
   }
