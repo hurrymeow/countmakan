@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { seedKeys, open, mockModels, photoEstimate, geminiBody, NASI } from './helpers.js';
 
-// `floors` past days ending yesterday. Every seventh is a messy day (500 kcal), the rest are on target.
+// `floors` past days ending yesterday. Every seventh is a low day (500 kcal), the rest are on target.
 async function seed(page, floors) {
   await page.evaluate((floors) => new Promise((res) => {
     const r = indexedDB.open('countmakan', 1);
@@ -191,4 +191,73 @@ test('tower: empty tap-in view says how to start', async ({ page }) => {
   await open(page);
   await page.locator('#summary .scene').click();
   await expect(page.locator('.tower-view .tower-empty')).toContainText('Log a meal to start building your tower');
+});
+
+// Weekly scoring. `plan` is [[offsetDays from today, kcal]]; one meal per day.
+async function seedDays(page, plan) {
+  await page.evaluate((plan) => new Promise((res) => {
+    const r = indexedDB.open('countmakan', 1);
+    r.onsuccess = () => {
+      const t = r.result.transaction('entries', 'readwrite');
+      plan.forEach(([off, kcal], i) => {
+        const d = new Date(); d.setDate(d.getDate() + off);
+        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        t.objectStore('entries').put({ id: `w${i}`, day, ts: d.toISOString(), source: 'text', items: [{ name: 'Meal', grams: 300, kcal, protein: kcal / 30, carbs: kcal / 8, fat: kcal / 30, confidence: 0.9 }] });
+      });
+      t.oncomplete = res;
+    };
+  }), plan);
+}
+
+// Offsets of every day in the two weeks before this week, oldest first. Mon-Sun, 14 days.
+const lastTwoWeeks = () => {
+  const dow = (new Date().getDay() + 6) % 7; // 0 = Monday
+  return Array.from({ length: 14 }, (_, i) => i - 14 - dow);
+};
+
+test('tower: a hit week has busier floors than a missed week', async ({ page }) => {
+  await seedKeys(page);
+  await open(page);
+  const goal = await page.evaluate(() => JSON.parse(localStorage.getItem('countmakan.targets') || '{}').kcal || 0);
+  const kcal = goal || 2000;
+  const offs = lastTwoWeeks();
+  await seedDays(page, offs.map((o, i) => [o, i < 7 ? kcal * 0.4 : kcal]));
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  const model = await page.evaluate(async (kcalGoal) => {
+    const { towerModel } = await import('/js/tower.js');
+    const entries = await new Promise((res) => {
+      const r = indexedDB.open('countmakan', 1);
+      r.onsuccess = () => { const q = r.result.transaction('entries').objectStore('entries').getAll(); q.onsuccess = () => res(q.result); };
+    });
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const m = towerModel(entries, { kcal: kcalGoal, protein: 60 }, today);
+    return m.floors.map((f) => ({ busy: f.busy, walkers: f.walkers, messy: f.messy }));
+  }, kcal);
+  expect(model.length).toBe(14);
+  expect(model.slice(0, 7).every((f) => !f.busy)).toBe(true);
+  expect(model.slice(7).every((f) => f.busy)).toBe(true);
+  expect(model.every((f) => f.messy === undefined)).toBe(true);
+  expect(model[10].walkers).toBeGreaterThan(model[2].walkers);
+  await page.locator('#summary .scene').click();
+  await expect(page.locator('.tower-view')).toBeVisible();
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/weekly-view-top.png` });
+  await page.locator('.tower-scroll').evaluate((n) => { n.scrollTop = 780; }); // the week boundary: busy above, quiet below
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/weekly-boundary.png` });
+});
+
+test('tower: the budget line shows only when the week is off track', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-12T10:00:00') }); // a Thursday, so three days are behind us
+  await seedKeys(page);
+  await open(page);
+  const dow = 3;
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await expect(page.locator('#summary .week-budget')).toHaveCount(0);
+  await seedDays(page, Array.from({ length: dow }, (_, i) => [-dow + i, 4000]));
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await expect(page.locator('#summary .week-budget')).toContainText('/day to land the week');
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/weekly-today.png`, fullPage: true });
 });

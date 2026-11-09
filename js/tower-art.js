@@ -282,33 +282,12 @@ function walker(ctx, w, st, x, y, W, H, cheer = 0, t = 0) {
   R(SKIN[w.look], -2, top, 4, 4); R('#2a1e18', -2, top, 4, 1); R('#2a1e18', -2, top + 1, 1, 2); R('#1a1a1a', 1, top + 2, 1, 1);
 }
 
-// A floor still under construction: bare concrete, poles, planks, braces, a green tarp, a cone and a cement bag.
-function scaffold(ctx, x, y, W, H, r) {
-  ctx.fillStyle = '#2b2e3b'; ctx.fillRect(x, y, W, H);
-  ctx.fillStyle = '#343746';
-  for (let k = 3; k < W; k += 5) ctx.fillRect(x + k, y, 1, H);
-  ctx.fillStyle = '#23252f'; ctx.fillRect(x, y + H - 3, W, 3);
-  const pole = '#a88a55', plank = '#c9a35e', shade = '#6b512d';
-  for (const f of [0.28, 0.55, 0.82]) { // 3 plank rows
-    const py = y + Math.round(H * f);
-    ctx.fillStyle = plank; ctx.fillRect(x, py, W, 2);
-    ctx.fillStyle = shade; ctx.fillRect(x, py + 2, W, 1);
-  }
-  for (let px = 4; px < W; px += 16) { // poles and braces
-    ctx.fillStyle = pole; ctx.fillRect(x + px, y, 2, H);
-    const y0 = y + Math.round(H * 0.28), y1 = y + Math.round(H * 0.82);
-    ctx.fillStyle = shade;
-    for (let k = 0; k < 14 && px + k < W - 2; k++) ctx.fillRect(x + px + 2 + k, y0 + Math.round(((y1 - y0) * k) / 14), 1, 1);
-  }
-  const tx = x + Math.round(W * 0.3), tw = Math.round(W * 0.4), ty = y + Math.round(H * 0.28) + 3, th = Math.round(H * 0.5) - 3;
-  ctx.fillStyle = '#2f7d57'; ctx.fillRect(tx, ty, tw, th);
-  ctx.fillStyle = '#3a9468'; for (let k = 0; k < tw; k += 4) ctx.fillRect(tx + k, ty, 2, th);
-  ctx.fillStyle = '#1f5a3d'; ctx.fillRect(tx, ty + th - 2, tw, 2);
-  const cx = x + Math.round(W * 0.14) + Math.floor(r() * 4), by = y + H - 4;
-  ctx.fillStyle = '#e8742a'; ctx.fillRect(cx, by - 5, 3, 5); ctx.fillRect(cx - 1, by - 1, 5, 1);
-  ctx.fillStyle = '#f3ead2'; ctx.fillRect(cx, by - 3, 3, 1);
-  ctx.fillStyle = '#b9b3a2'; ctx.fillRect(x + W - 16, by - 4, 8, 4);
-  ctx.fillStyle = '#8f8a7b'; ctx.fillRect(x + W - 16, by - 2, 8, 1);
+// One small extra item at the end of a busy shop: a plant, a wall poster or a crate.
+function extra(ctx, cx, b, k) {
+  const R = (c, x, y, w, h) => { ctx.fillStyle = c; ctx.fillRect(cx + x, b + y, w, h); };
+  if (k < 0.34) { R('#8a5a3a', -1, -3, 3, 3); R('#3fae7a', -2, -6, 5, 3); R('#57c08a', -1, -7, 3, 1); }
+  else if (k < 0.67) { R('#e8e2d0', -2, -11, 5, 6); R('#c94f4f', -1, -10, 3, 2); R('#5b8def', -1, -7, 3, 1); }
+  else { R('#a8794a', -3, -4, 6, 4); R('#c9a35e', -3, -4, 6, 1); R('#6b4a3a', -3, -2, 6, 1); }
 }
 
 // The still part of a floor: walls, floors, lamps and slab. Props, neon, walkers and the live dim move or change,
@@ -318,8 +297,7 @@ function floorStatic(ctx, x, y, W, H, fl) {
   const r = rng(seed);
   const segs = [];
   let sx = x;
-  if (fl.messy) scaffold(ctx, x, y, W, H, r);
-  else [fl.share.protein, fl.share.carbs, fl.share.fat].forEach((s, i) => {
+  [fl.share.protein, fl.share.carbs, fl.share.fat].forEach((s, i) => {
     const sw = i === 2 ? x + W - sx : Math.round(W * s);
     if (sw > 0) {
       const shop = fl.shops[i], S = SHOP[shop];
@@ -335,8 +313,8 @@ function floorStatic(ctx, x, y, W, H, fl) {
       ctx.save(); ctx.beginPath(); ctx.rect(ix, iy, iw, ih + 2); ctx.clip();
       wall(ctx, S, i, ix, iy, iw, ih, r, 0);
       floorTiles(ctx, S, ix, y + H - 4, iw);
-      const nLamps = Math.max(1, Math.floor(iw / 16));
-      for (let l = 0; l < nLamps; l++) lamp(ctx, ix + Math.floor((iw * (l + 0.5)) / nLamps), iy, ih, AMBER, r() > 0.2);
+      const nLamps = Math.max(1, Math.floor(iw / (fl.busy ? 11 : 16)));
+      for (let l = 0; l < nLamps; l++) lamp(ctx, ix + Math.floor((iw * (l + 0.5)) / nLamps), iy, ih, AMBER, r() > 0.2 || fl.busy);
       ctx.restore();
       ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(ix + 1, iy + 1, 1, 4); ctx.fillRect(ix + 2, iy + 1, 1, 2); // glass glint
       segs.push({ sx, sw, i, shop });
@@ -374,13 +352,14 @@ function floor(ctx, x, y, W, H, fl, t, goal, fx = null) {
   }
   ctx.drawImage(c.cv, x - 1, y);
   const seed = hash(fl.day);
-  if (!fl.messy) {
+  {
     for (const sg of c.segs) {
       const sx = sg.sx - 1 + x;
       if (sg.sw > 14) { // props, clipped to the shop
         ctx.save(); ctx.beginPath(); ctx.rect(sx + 2, y + 6, sg.sw - 4, H - 6); ctx.clip();
         let slot = seed % 2;
-        for (let cx = sx + 10; cx < sx + sg.sw - 7; cx += 21) prop(ctx, sg.shop, cx, y + H - 4, rng(seed + cx - x), t, slot++);
+        for (let cx = sx + 10; cx < sx + sg.sw - 7; cx += fl.busy ? 14 : 21) prop(ctx, sg.shop, cx, y + H - 4, rng(seed + cx - x), t, slot++);
+        if (fl.busy) extra(ctx, sx + sg.sw - 6, y + H - 4, rng(seed + sg.sx)());
         ctx.restore();
       }
       if (sg.i === 0 && sg.sw >= 15) { // protein shop: neon sign, and the blue surge during the beat
@@ -395,13 +374,14 @@ function floor(ctx, x, y, W, H, fl, t, goal, fx = null) {
     }
   }
   const n = fl.live ? 1 : fl.walkers;
-  if (!fl.messy && n > 0) {
+  if (n > 0) {
     ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y, W - 2, H); ctx.clip();
     for (const w of walkersFor(seed, n, W)) walker(ctx, w, walkerState(w, t, W), x, y, W, H, fl.live && fx?.cheer ? 1 : 0, t);
     ctx.restore();
   }
   if (fl.live) {
-    const frac = goal > 0 ? fl.kcal / goal : 1;
+    const gl = fl.budget || goal;
+    const frac = gl > 0 ? fl.kcal / gl : 1;
     liveFrame(ctx, x, y, W, H, fx?.done ?? (fl.inBand ? 1 : frac), fx?.sealed ?? (fl.inBand ? 1 : 0));
   }
   return H + 2;
@@ -722,7 +702,7 @@ export function animate(canvas, m, opts = {}) {
 // ---------- overview rail ----------
 export const RAIL_W = 20;
 const RAIL_TICKS = [5, 20, 60, 100];
-// Draws the whole tower as thin bands, newest at the top: one band per floor split by macro share, grey if messy.
+// Draws the whole tower as thin bands, newest at the top: one band per floor split by macro share, busy (hit) weeks full colour, quiet weeks faded.
 // Returns { h, top, bandH }; h is the drawn height in CSS px.
 export function drawRail(canvas, m, avail) {
   const rows = (m.tonight ? 1 : 0) + m.floors.length + 1; // tonight, floors, ground
@@ -739,11 +719,12 @@ export function drawRail(canvas, m, avail) {
   }
   const draw = (fl, row) => {
     const y = cap + row * bandH, hh = Math.max(1, bandH - (bandH > 2 ? 1 : 0));
-    if (fl.messy) { ctx.fillStyle = '#6d7183'; ctx.fillRect(0, y, RAIL_W, hh); return; }
+    ctx.globalAlpha = fl.busy || fl.live ? 1 : 0.6;
     const w0 = Math.round(RAIL_W * fl.share.protein), w1 = Math.round(RAIL_W * (fl.share.protein + fl.share.carbs));
     ctx.fillStyle = MAC[0]; ctx.fillRect(0, y, w0, hh);
     ctx.fillStyle = MAC[1]; ctx.fillRect(w0, y, w1 - w0, hh);
     ctx.fillStyle = MAC[2]; ctx.fillRect(w1, y, RAIL_W - w1, hh);
+    ctx.globalAlpha = 1;
   };
   let row = 0;
   if (m.tonight) { draw(m.tonight, row); ctx.fillStyle = 'rgba(13,14,20,.45)'; ctx.fillRect(0, cap, RAIL_W, bandH); row++; }

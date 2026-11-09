@@ -8,7 +8,7 @@ import { prepareImage } from './image.js';
 import { describeFailure, scanSummary, MSG } from './messages.js';
 import * as db from './db.js';
 import * as health from './health.js';
-import { towerModel, celebrationFor } from './tower.js';
+import { towerModel, celebrationFor, weekBeatFor } from './tower.js';
 import { animate, drawSkyline, startBeat, playOverlay } from './tower-art.js';
 import { openTower } from './tower-view.js';
 import { ringSvg, macroSplit, dailyAverage, isOver, onTarget } from './charts.js';
@@ -246,14 +246,15 @@ function renderSummary() {
     scene,
     el('div', { class: 'scene-stats' },
       el('span', {}, status === 'On target' ? `±10% of ${fmt(goal)} goal` : `Goal ${fmt(goal)}`),
-      avg?.days >= 3 ? el('span', {}, `${avg.days}-day avg ${fmt(avg.kcal)}`) : null),
+      avg?.days >= 3 ? el('span', {}, `${avg.days}-day avg ${fmt(avg.kcal)}`) : null,
+      m.budget && !m.budget.onTrack ? el('span', { class: 'week-budget' }, `≈${fmt(Math.round(m.budget.budget / 10) * 10)}/day to land the week`) : null),
     el('div', { class: 'bars' }, MACRO_KEYS.map((m) => bar(m, t[m], state.targets[m]))),
     el('div', { class: 'bars' },
       limitBar('Sugar', t.sugar, state.targets.sugar, 'g'),
       limitBar('Fibre', t.fibre, state.targets.fibre, 'g', true),
       limitBar('Sodium', t.sodium, state.targets.sodium, 'mg')),
   ].filter(Boolean));
-  const beat = beatFor(m.tonight, today, goal, scene);
+  const beat = beatFor(m.tonight, today, m.tonight?.budget || goal, scene, m.scores);
   fillScene(slot, m, beat);
   if (beat) stopOverlay = playOverlay(scene, slot.querySelector('canvas'), ring, m, beat);
 }
@@ -264,22 +265,26 @@ const CELEBRATED = 'countmakan.celebrated';
 let beatReady = false;
 let prevKcal = 0;
 let stopOverlay = () => {};
-function beatFor(tonight, today, goal, scene) {
+function beatFor(tonight, today, goal, scene, scores) {
   const now = { day: today, proteinHit: !!tonight?.proteinHit, inBand: !!tonight?.inBand };
   let done = null;
   try { done = JSON.parse(localStorage.getItem(CELEBRATED)); } catch { /* private mode */ }
-  const kind = celebrationFor(done, now);
+  let kind = celebrationFor(done, now);
+  const week = tonight ? weekBeatFor(done, scores, today) : null;
+  if (week) kind = kind === 'protein' ? 'both' : kind || 'calorie';
   const before = prevKcal;
   prevKcal = tonight?.kcal || 0;
   const ready = beatReady;
   beatReady = true;
   if (!kind) return null;
-  const seen = done?.day === today ? done : {};
-  try {
-    localStorage.setItem(CELEBRATED, JSON.stringify({ day: today, protein: !!seen.protein || now.proteinHit, kcal: !!seen.kcal || now.inBand }));
-  } catch { /* private mode */ }
   const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (!ready || calm || !scene.offsetParent) return null;
+  const shown = !!scene.offsetParent;
+  const seen = done?.day === today ? done : {};
+  // The week beat plays even on a session's first render. It is recorded only once it was seen or motion is off.
+  const record = { day: today, protein: !!seen.protein || now.proteinHit, kcal: !!seen.kcal || now.inBand, week: done?.week };
+  if (week && (shown || calm)) record.week = week;
+  try { localStorage.setItem(CELEBRATED, JSON.stringify(record)); } catch { /* private mode */ }
+  if ((!ready && !week) || calm || !shown) return null;
   return startBeat(kind, goal > 0 ? Math.min(0.85, before / goal) : 0.8);
 }
 
