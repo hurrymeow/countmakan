@@ -207,3 +207,14 @@ test('skyline: neighbours sink as the tower grows, stars fade in from 30 to 100'
   assert.ok(Math.abs(skylineFor(65).stars - 0.5) < 1e-9);
   assert.equal(skylineFor(100).stars, 1);
 });
+
+test('stations: one per prop, shared by shop actions, and the activity loop is 12 s', async () => {
+  const { stations, ALOOP } = await import('../js/tower-art.js');
+  assert.equal(ALOOP, 12);
+  const segs = [{ sx: 1, sw: 60, shop: 'sport' }, { sx: 61, sw: 10, shop: 'pool' }, { sx: 71, sw: 40, shop: 'noodle' }];
+  const calm = stations(segs, 4, 0, false), busy = stations(segs, 4, 0, true);
+  assert.equal(calm.length, 5); // props every 21 px from +10, stopping 7 px short of the shop edge
+  assert.ok(busy.length > calm.length);
+  assert.ok(calm.every((s) => s.dir === 1 || s.dir === -1));
+  assert.deepEqual(calm.slice(0, 2).map((s) => s.act).sort(), ['lift', 'run']);
+});
