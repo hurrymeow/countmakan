@@ -58,7 +58,28 @@ export function applyOrder(chain, ids) {
 
 // Walks the chain. Returns { items, usage, provider, model, attempts }.
 // Step id -> time it timed out. Lives for the page session.
-const timedOut = new Map();
+// Saved in localStorage so a reload or a killed PWA still skips a hung model.
+const COOLDOWN_KEY = 'countmakan.cooldown';
+function loadTimedOut() {
+  const map = new Map();
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem(COOLDOWN_KEY));
+    for (const [id, t] of Object.entries(saved || {})) {
+      if (Number.isFinite(t) && Date.now() - t < COOLDOWN_MS) map.set(id, t);
+    }
+  } catch {
+    // No storage or bad data. Start empty.
+  }
+  return map;
+}
+function saveTimedOut(map) {
+  try {
+    globalThis.localStorage?.setItem(COOLDOWN_KEY, JSON.stringify(Object.fromEntries(map)));
+  } catch {
+    // Storage blocked. The skip still holds until the app closes.
+  }
+}
+const timedOut = loadTimedOut();
 
 // Resolves after ms, or rejects with a cancel when signal aborts.
 function wait(ms, signal) {
@@ -101,11 +122,14 @@ export async function estimate(input, keys, {
       onAttempt?.(step, tries());
       const out = await callProvider(step, input, keys[step.provider], { fetchFn, timeoutMs: budget, signal });
       attempts.push({ ...step, ok: true, ms: ms() });
-      cooldown.delete(stepId(step));
+      if (cooldown.delete(stepId(step)) && cooldown === timedOut) saveTimedOut(timedOut);
       return { ...out, provider: step.provider, model: step.model, attempts };
     } catch (e) {
       attempts.push({ ...step, error: e.message, status: e.status || 0, kind: e.kind || 'other', ms: ms() });
-      if (e.kind === 'timeout') cooldown.set(stepId(step), clock());
+      if (e.kind === 'timeout') {
+        cooldown.set(stepId(step), clock());
+        if (cooldown === timedOut) saveTimedOut(timedOut);
+      }
       if (!(e instanceof ProviderError) || !e.retryable) {
         const err = new ProviderError(`${step.model}: ${e.message}`, { status: e.status, kind: e.kind });
         err.attempts = attempts;
