@@ -671,6 +671,7 @@ const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').ma
 // `opts.beat` (from startBeat) plays a goal beat on tonight's floor and the roof flag.
 export function animate(canvas, m, opts = {}) {
   const layout = sizeTower(canvas, m, opts);
+  opts.onLayout?.(layout);
   const paint = (t) => {
     const fx = opts.beat ? beatState(opts.beat.kind, opts.beat.t(), opts.beat.done0) : null;
     let range = null;

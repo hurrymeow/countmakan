@@ -94,6 +94,35 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await expect(view).toBeHidden();
 });
 
+test('tower: sticky week bar follows the scroll and seams mark weeks', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedKeys(page);
+  await open(page);
+  await seed(page, 45);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  const view = page.locator('.tower-view');
+  await page.locator('#summary .scene').click();
+  const bar = view.locator('.tower-week');
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('This week');
+  const seams = await view.locator('.tower-seam').count();
+  expect(seams).toBeGreaterThanOrEqual(6);
+  const hits = await view.locator('.tower-seam.hit').count();
+  expect(hits).toBeGreaterThan(0);
+  expect(hits).toBeLessThan(seams);
+  const close = await view.getByRole('button', { name: 'Close tower' }).boundingBox();
+  const rail = await view.locator('.tower-rail').boundingBox();
+  const b = await bar.boundingBox();
+  expect(overlaps(b, close)).toBe(false);
+  expect(overlaps(b, rail)).toBe(false);
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/week-top.png` });
+  await view.locator('.tower-scroll').evaluate((n) => { n.scrollTop = 1500; });
+  await expect(bar).toContainText(/\d+\u2013\d+ \w{3}|\d+ \w{3}\u2013\d+ \w{3}/);
+  await expect(bar).toContainText(/avg [\d,]+ \u00b7 (landed|missed)/);
+  if (process.env.TOWER_SHOTS) await page.screenshot({ path: `${process.env.TOWER_SHOTS}/week-scrolled.png` });
+});
+
 test('tower: overview rail jumps to the lobby', async ({ page }) => {
   await seedKeys(page);
   await open(page);
