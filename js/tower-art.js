@@ -56,19 +56,73 @@ export function walkerState(w, t, W, figH = FIG_H) {
   return { x: w.dir > 0 ? d : W - d, frame };
 }
 
+// ---------- outlined layers ----------
+// Props, the roof and the lobby are drawn into a scratch canvas at full buffer resolution, given a 1 px dark outline,
+// then composited. Bevel: every solid rect gets a light top edge and a dark bottom and right edge (half a unit each).
+// Translucent fills (steam, glows) go to a second layer on top, so they never get outlined.
+const OUT = '#15171f';
+const scratch = { a: null, t: null, s: null };
+function scratchCanvas(k, w, h) {
+  let c = scratch[k];
+  if (!c) c = scratch[k] = document.createElement('canvas');
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else c.getContext('2d').clearRect(0, 0, w, h);
+  return c;
+}
+function bevel(g, tg) {
+  let fs = '#000000';
+  const both = new Set(['save', 'restore', 'beginPath', 'rect', 'clip']);
+  return new Proxy(g, {
+    get(o, k) {
+      if (k === 'fillRect') return (x, y, w, h) => {
+        if (fs[0] !== '#') { tg.fillStyle = fs; tg.fillRect(x, y, w, h); return; }
+        o.fillStyle = fs; o.fillRect(x, y, w, h);
+        if (w * h >= 2 && w * h < 300) {
+          o.fillStyle = mix(fs, '#ffffff', 0.4); o.fillRect(x, y, w, 0.5);
+          o.fillStyle = mix(fs, '#000000', 0.35); o.fillRect(x, y + h - 0.5, w, 0.5);
+          if (h >= 2) o.fillRect(x + w - 0.5, y + 0.5, 0.5, h - 1);
+          o.fillStyle = fs;
+        }
+      };
+      if (both.has(k)) return (...a) => { o[k](...a); tg[k](...a); };
+      const v = o[k]; return typeof v === 'function' ? v.bind(o) : v;
+    },
+    set(o, k, v) { o[k] = v; if (k === 'fillStyle') fs = o.fillStyle; return true; },
+  });
+}
+// Draws `draw(g)` for the layout rect (x, y, w, h) with bevel and outline onto `ctx` (which already carries the PX transform).
+function outlined(ctx, x, y, w, h, draw) {
+  const bw = Math.ceil(w * PX), bh = Math.ceil(h * PX);
+  const A = scratchCanvas('a', bw, bh), T = scratchCanvas('t', bw, bh), S = scratchCanvas('s', bw, bh);
+  const g = A.getContext('2d'), tg = T.getContext('2d');
+  for (const c of [g, tg]) { c.setTransform(PX, 0, 0, PX, -x * PX, -y * PX); c.imageSmoothingEnabled = false; }
+  draw(bevel(g, tg));
+  const sg = S.getContext('2d');
+  sg.drawImage(A, 0, 0);
+  sg.globalCompositeOperation = 'source-in'; sg.fillStyle = OUT; sg.fillRect(0, 0, bw, bh); sg.globalCompositeOperation = 'source-over';
+  const e = 1 / PX;
+  for (const [dx, dy] of [[-e, 0], [e, 0], [0, -e], [0, e]]) ctx.drawImage(S, x + dx, y + dy, w, h);
+  ctx.drawImage(A, x, y, w, h);
+  ctx.drawImage(T, x, y, w, h);
+}
+
 // ---------- pieces ----------
 // `flag` is 0..1: how far up the pole it has climbed. 0 hides it. `built` lists the milestones reached.
 function roof(ctx, x, y, W, flag = 0, t = 0, built = []) {
   ctx.fillStyle = '#2a2d3d'; ctx.fillRect(x - 1, y - 3, W + 2, 3);
-  ctx.fillStyle = '#5a5f78'; ctx.fillRect(x + 3, y - 9, 8, 6);
-  ctx.fillStyle = '#3a3f55'; ctx.fillRect(x + 4, y - 8, 6, 1);
+  ctx.fillStyle = '#4a4e66'; ctx.fillRect(x - 1, y - 3, W + 2, 0.5); // slab highlight
+  ctx.fillStyle = '#12141c'; for (let k = 2; k < W; k += 4) ctx.fillRect(x + k, y - 1, 0.5, 0.5); // rivets
+  ctx.fillStyle = '#5a5f78'; ctx.fillRect(x + 3, y - 9, 8, 6); // AC unit: grille, fan and a vent pipe
+  ctx.fillStyle = '#3a3f55'; for (let k = 0; k < 4; k++) ctx.fillRect(x + 4, y - 8.5 + k * 1.25, 3, 0.5);
+  ctx.fillStyle = '#2b2f3a'; ctx.fillRect(x + 8, y - 8, 2, 2); ctx.fillStyle = '#9aa0b0'; ctx.fillRect(x + 8.5, y - 7.5, 1, 1);
+  ctx.fillStyle = '#7a7f94'; ctx.fillRect(x + 11, y - 7, 1, 4); ctx.fillRect(x + 10.5, y - 7.5, 2, 0.5);
   const fp = x + Math.floor(W * 0.35);
   if (built.includes('garden')) garden(ctx, x, y, W, fp);
   else {
     ctx.fillStyle = '#4f7a3a';
     for (let i = W - 8; i > W * 0.5; i -= 7) {
-      ctx.fillRect(x + i, y - 7, 4, 4);
-      ctx.fillStyle = '#6a9b4d'; ctx.fillRect(x + i + 1, y - 7, 2, 1);
+      ctx.fillRect(x + i, y - 6.5, 4, 3.5); ctx.fillRect(x + i + 0.5, y - 7.5, 3, 1);
+      ctx.fillStyle = '#6a9b4d'; ctx.fillRect(x + i + 1, y - 7.5, 1.5, 0.5); ctx.fillRect(x + i + 0.5, y - 6, 0.5, 1);
+      ctx.fillStyle = '#e07a9a'; ctx.fillRect(x + i + 2.5, y - 5.5, 0.5, 0.5);
       ctx.fillStyle = '#4f7a3a';
     }
   }
@@ -95,9 +149,10 @@ function garden(ctx, x, y, W, fp) {
   ctx.fillStyle = '#5a4630'; ctx.fillRect(px + 2, y - 5, 1, 2); ctx.fillRect(px + pw - 3, y - 5, 1, 2);
   for (const f of [0.62, 0.77, 0.9]) {
     const tx = x + Math.floor(W * f);
-    ctx.fillStyle = '#5a4630'; ctx.fillRect(tx, y - 7, 1, 4);
-    ctx.fillStyle = '#4f7a3a'; ctx.fillRect(tx - 2, y - 12, 5, 5);
-    ctx.fillStyle = '#6a9b4d'; ctx.fillRect(tx - 1, y - 12, 2, 1); ctx.fillRect(tx - 2, y - 11, 1, 1);
+    ctx.fillStyle = '#5a4630'; ctx.fillRect(tx, y - 7, 1, 4); ctx.fillRect(tx - 1, y - 3.5, 3, 0.5);
+    ctx.fillStyle = '#4f7a3a'; ctx.fillRect(tx - 2.5, y - 11, 6, 4); ctx.fillRect(tx - 1.5, y - 12.5, 4, 2); ctx.fillRect(tx - 2, y - 7.5, 5, 1);
+    ctx.fillStyle = '#3d6230'; ctx.fillRect(tx - 1, y - 8.5, 4, 0.5); ctx.fillRect(tx + 1.5, y - 10.5, 1.5, 1);
+    ctx.fillStyle = '#6a9b4d'; ctx.fillRect(tx - 1, y - 12.5, 2, 0.5); ctx.fillRect(tx - 2.5, y - 11, 1, 1); ctx.fillRect(tx, y - 10, 1, 0.5);
   }
 }
 
@@ -107,9 +162,11 @@ function spire(ctx, cx, y, beacon, t) {
   ctx.fillStyle = '#3a3f55'; ctx.fillRect(cx - 5, y - 4, 10, 1);
   ctx.fillStyle = '#6b7090'; ctx.fillRect(cx - 3, y - 10, 6, 4);
   ctx.fillStyle = '#3a3f55'; ctx.fillRect(cx - 3, y - 8, 6, 1);
-  ctx.fillStyle = '#9aa0b0'; ctx.fillRect(cx, y - 34, 1, 24);
-  ctx.fillRect(cx - 1, y - 20, 3, 1);
-  ctx.fillStyle = '#e0453a'; ctx.fillRect(cx, y - 38, 1, 4);
+  ctx.fillStyle = '#12141c'; for (const bx of [-4.5, 3.5]) ctx.fillRect(cx + bx, y - 5.5, 0.5, 0.5); // bolts
+  ctx.fillStyle = '#9aa0b0'; ctx.fillRect(cx - 0.5, y - 34, 1.5, 24);
+  ctx.fillStyle = '#6b7090'; for (let k = 0; k < 6; k++) { ctx.fillRect(cx - 1.5 + (k % 2), y - 12 - k * 3, 1.5, 0.5); ctx.fillRect(cx + 0.5 - (k % 2), y - 13.5 - k * 3, 1.5, 0.5); } // lattice
+  ctx.fillStyle = '#c9cfdc'; ctx.fillRect(cx - 2, y - 20, 4.5, 1);
+  ctx.fillStyle = '#e0453a'; ctx.fillRect(cx - 0.5, y - 38, 1.5, 4); ctx.fillRect(cx - 1, y - 38.5, 2.5, 1);
   if (!beacon) return;
   const k = reduced() ? 1 : 0.5 + 0.5 * Math.sin(t * 4);
   ctx.fillStyle = `rgba(255,70,60,${(0.12 + 0.28 * k).toFixed(2)})`; ctx.fillRect(cx - 3, y - 42, 7, 7);
@@ -135,19 +192,35 @@ const SHOP = {
   nut: { wall: '#ecdcc0', floor: ['#7a5a3c', '#6b4d33'], pat: 'panel' },
 };
 
+// Half-pixel wall patterns, skirting and a ceiling shadow. Heights below `lo` are wall, the last 4 units are floor.
 function wall(ctx, s, i, ix, iy, iw, ih, r, dim) {
   const base = mix(mix(s.wall, MAC[i], 0.38), '#1a1c26', dim);
-  ctx.fillStyle = base; ctx.fillRect(ix, iy, iw, ih);
-  const dk = mix(base, '#000000', 0.12);
-  ctx.fillStyle = dk;
-  if (s.pat === 'stripe') for (let k = 0; k < iw; k += 4) ctx.fillRect(ix + k, iy, 1, ih);
-  if (s.pat === 'brick') for (let yy = 0; yy < ih - 4; yy += 3) { ctx.fillRect(ix, iy + yy, iw, 1); for (let k = (yy / 3) % 2 ? 2 : 0; k < iw; k += 5) ctx.fillRect(ix + k, iy + yy, 1, 3); }
-  if (s.pat === 'tile') for (let yy = 0; yy < ih - 4; yy += 4) for (let k = 0; k < iw; k += 4) { ctx.fillRect(ix + k, iy + yy, 4, 1); ctx.fillRect(ix + k, iy + yy, 1, 4); }
-  if (s.pat === 'check') { ctx.fillRect(ix, iy + Math.floor(ih * 0.55), iw, ih); ctx.fillStyle = base; for (let k = 0; k < iw; k += 2) ctx.fillRect(ix + k + ((k / 2) % 2), iy + Math.floor(ih * 0.55), 1, 1); }
-  if (s.pat === 'panel') { ctx.fillRect(ix, iy + Math.floor(ih * 0.5), iw, 1); for (let k = 3; k < iw; k += 6) ctx.fillRect(ix + k, iy + Math.floor(ih * 0.5), 1, ih); }
+  const dk = mix(base, '#000000', 0.14), lt = mix(base, '#ffffff', 0.18);
+  const F = (c, x, y, w, h) => { ctx.fillStyle = c; ctx.fillRect(ix + x, iy + y, w, h); };
+  F(base, 0, 0, iw, ih);
+  const lo = ih - 4;
+  if (s.pat === 'stripe') for (let k = 0; k < iw; k += 2) { F(dk, k, 0, 0.5, lo); F(lt, k + 0.5, 0, 0.5, lo); }
+  if (s.pat === 'brick') for (let row = 0, yy = 0; yy < lo; yy += 1.5, row++) {
+    F(dk, 0, yy, iw, 0.5);
+    for (let k = row % 2 ? 1.5 : 0; k < iw; k += 3) { F(dk, k, yy, 0.5, 1.5); if (r() < 0.25) F(mix(base, '#b05a3a', 0.18), k + 0.5, yy + 0.5, 2.5, 1); }
+  }
+  if (s.pat === 'tile') for (let yy = 0; yy < lo; yy += 2) for (let k = 0; k < iw; k += 2) { F(lt, k, yy, 2, 0.5); F(lt, k, yy, 0.5, 2); }
+  if (s.pat === 'check') { const y0 = Math.floor(ih * 0.5); for (let yy = y0; yy < lo; yy += 1) for (let k = 0; k < iw; k += 1) if ((k + yy) % 2) F(dk, k, yy, 1, 1); F(lt, 0, y0 - 0.5, iw, 0.5); }
+  if (s.pat === 'panel') { const y0 = Math.floor(ih * 0.5); F(mix(base, '#8a5a3a', 0.35), 0, y0, iw, lo - y0); for (let k = 0; k < iw; k += 1.5) F(mix(base, '#5a3a20', 0.35), k, y0, 0.5, lo - y0); F(lt, 0, y0, iw, 0.5); }
+  if (s.pat === 'plain') { // framed pictures
+    F(dk, 0, Math.floor(ih * 0.45), iw, 0.5);
+    for (let k = 3; k < iw - 6; k += 13) { F('#6b4a3a', k, 3, 5, 4); F(mix('#7fd0ff', base, 0.3), k + 0.5, 3.5, 4, 3); F('#57c08a', k + 0.5, 5, 4, 1.5); F('#ffffff', k + 1, 4, 1, 0.5); }
+  }
+  F(dk, 0, lo - 0.5, iw, 0.5); // skirting
+  F(mix(base, '#000000', 0.08), 0, 0, iw, 1); // ceiling shadow
 }
+// Floor tiles with a highlight on the top edge and a grout line on the right.
 function floorTiles(ctx, s, ix, b, iw) {
-  for (let k = 0; k < iw; k += 2) { ctx.fillStyle = s.floor[(k / 2) % 2]; ctx.fillRect(ix + k, b, 2, 2); }
+  for (let k = 0; k < iw; k += 1.5) {
+    ctx.fillStyle = s.floor[Math.round(k / 1.5) % 2]; ctx.fillRect(ix + k, b, 1.5, 2);
+    ctx.fillStyle = mix(s.floor[0], '#ffffff', 0.25); ctx.fillRect(ix + k, b, 1.5, 0.5);
+    ctx.fillStyle = mix(s.floor[1], '#000000', 0.25); ctx.fillRect(ix + k + 1, b + 0.5, 0.5, 1.5);
+  }
 }
 // ceiling lamp with a soft warm cone
 function lamp(ctx, cx, iy, ih, warm, on = 1) {
@@ -161,11 +234,15 @@ function prop(ctx, shop, cx, b, r, t, slot = 0) {
   const k = r();
   if (slot % 2) return alt(R, shop, k, t);
   switch (shop) {
-    case 'sport': // rack, bench, kettlebells
-      R('#2b2f3a', -5, -11, 1, 11); R('#2b2f3a', 4, -11, 1, 11); R('#2b2f3a', -5, -9, 10, 1);
-      R('#c94f4f', -4, -8, 2, 3); R('#3a3f55', -1, -8, 2, 3); R('#c94f4f', 2, -8, 2, 3);
-      R('#2b2f3a', -5, -4, 10, 1); R('#e7c34a', -3, -3, 2, 2); R('#e7c34a', 1, -3, 2, 2);
-      if (k > 0.4) { R('#1e2230', 8, -3, 3, 3); R('#1e2230', 9, -4, 1, 1); }
+    case 'sport': // rack with a loaded bar, dumbbell shelf, kettlebells
+      R('#2b2f3a', -5, -11, 1, 11); R('#2b2f3a', 4, -11, 1, 11);
+      for (let y = -10; y < -1; y += 2) { R('#555b73', -5, y, 0.5, 0.5); R('#555b73', 4.5, y, 0.5, 0.5); }
+      R('#c9cfdc', -7, -9.5, 14, 0.5);
+      R('#c94f4f', -7, -11, 1, 3); R('#3a3f55', -6, -10.5, 1, 2); R('#c94f4f', 6, -11, 1, 3); R('#3a3f55', 5, -10.5, 1, 2);
+      R('#2b2f3a', -5, -5, 10, 1);
+      for (const [x, c] of [[-4, '#c94f4f'], [-1, '#3a3f55'], [2, '#c94f4f']]) { R('#9aa0b0', x + 1, -6.5, 1, 0.5); R(c, x, -7.5, 1, 2); R(c, x + 2, -7.5, 1, 2); }
+      for (const x of [-4, 0]) { R('#e7c34a', x, -2.5, 3, 2.5); R('#e7c34a', x + 0.5, -3.5, 2, 0.5); R('#e7c34a', x + 0.5, -3.5, 0.5, 1); R('#e7c34a', x + 2, -3.5, 0.5, 1); R('#8a6a1a', x + 1, -1.5, 1, 0.5); }
+      if (k > 0.4) { R('#1e2230', 7, -3, 4, 3); R('#3a3f55', 7.5, -3.5, 3, 0.5); R('#1e2230', 8, -5, 2, 1.5); R('#9aa0b0', 8.5, -4.5, 1, 0.5); }
       break;
     case 'boxing': { // swinging bag on a chain, ring rope behind
       const sw = Math.round(Math.sin(t * 3 + k * 6) * 1.2);
@@ -174,36 +251,47 @@ function prop(ctx, shop, cx, b, r, t, slot = 0) {
       if (k > 0.5) { R('#c94f4f', 6, -2, 2, 2); R('#c94f4f', 9, -2, 2, 2); }
       break; }
     case 'pool': { // water with lane rope, ladder, wave shimmer
-      R('#2e9cc6', -10, -3, 20, 3); R('#7fd0ff', -10, -3, 20, 1);
-      for (let x = -10; x < 10; x += 3) R(((x + Math.floor(t * 6)) % 6 === 0) ? '#ffffff' : '#c94f4f', x, -2, 1, 1);
-      R('#c9c2ae', 7, -9, 1, 7); R('#c9c2ae', 9, -9, 1, 7); R('#c9c2ae', 7, -7, 3, 1); R('#c9c2ae', 7, -5, 3, 1);
-      R('#e7c34a', -6, -10, 4, 4); R('#c94f4f', -6, -10, 4, 1); // ring buoy on wall
-      R('#a8dff0', -5, -9, 2, 2);
+      R('#2e9cc6', -10, -3, 20, 3); R('#3fb6e0', -10, -2.5, 20, 1); R('#7fd0ff', -10, -3, 20, 0.5);
+      for (let x = -10; x < 10; x += 3) R(((x + Math.floor(t * 6)) % 6 === 0) ? '#ffffff' : '#c94f4f', x, -2.5, 1.5, 1);
+      for (let x = -9; x < 9; x += 4) R('#a8dff0', x + ((Math.floor(t * 3) + x) & 1) * 0.5, -1, 1, 0.5);
+      R('#c9cfdc', 7, -10, 0.5, 8); R('#c9cfdc', 9.5, -10, 0.5, 8); R('#c9cfdc', 7, -10, 3, 0.5);
+      for (const y of [-8, -6, -4]) R('#9aa0b0', 7, y, 3, 0.5);
+      R('#e7c34a', -6, -11, 5, 5); R('#c94f4f', -6, -11, 5, 1.5); R('#c94f4f', -6, -7.5, 5, 1.5); R('#e8e2d0', -4.5, -9.5, 2, 1); // ring buoy on wall
+      R('#a8dff0', -5, -9.5, 0.5, 0.5);
       break; }
     case 'dojo': // hanging scroll, wooden dummy, mat
       R('#e8e2d0', -8, -14, 4, 8); R('#2a1e18', -7, -12, 2, 1); R('#2a1e18', -7, -10, 2, 2); R('#6b4a3a', -9, -14, 6, 1);
       R('#8a5a3a', 3, -11, 2, 11); R('#8a5a3a', 1, -9, 6, 1); R('#8a5a3a', 1, -6, 6, 1); R('#6b4a3a', 3, -12, 2, 1);
       R('#d6c48a', -9, -1, 18, 1);
       break;
-    case 'office': // desk, screen, plant
-      R('#6b4a3a', -6, -5, 12, 1); R('#6b4a3a', -6, -4, 1, 4); R('#6b4a3a', 5, -4, 1, 4);
-      R('#1e2230', -3, -10, 6, 5); R(Math.floor(t * 2 + k * 9) % 3 ? '#7fd0ff' : '#a8e6ff', -2, -9, 4, 3); R('#1e2230', 0, -5, 1, 1);
-      if (k > 0.4) { R('#8a5a3a', 7, -3, 3, 3); R('#3fae7a', 6, -6, 5, 3); R('#57c08a', 7, -7, 3, 1); }
-      else { R('#e8e2d0', 7, -12, 6, 4); R('#c94f4f', 8, -11, 1, 2); R('#3fae7a', 10, -10, 1, 1); R('#5b8def', 11, -11, 1, 2); } // chart on wall
+    case 'office': // desk, screen, keyboard, mug, plant
+      R('#7a5644', -7, -5, 14, 1); R('#6b4a3a', -7, -4, 14, 1); R('#4a3326', -6.5, -3, 4, 0.5); R('#c9a35e', -5, -3.5, 1, 0.5);
+      R('#6b4a3a', -6, -3, 1, 3); R('#6b4a3a', 5, -3, 1, 3);
+      R('#1e2230', -3, -11, 6, 5.5); R(Math.floor(t * 2 + k * 9) % 3 ? '#7fd0ff' : '#a8e6ff', -2.5, -10.5, 5, 4);
+      for (const [y, w] of [[-10, 3], [-9, 2], [-8, 3.5]]) R('#2b6a9a', -2, y, w, 0.5);
+      R('#5a5f6b', -0.5, -5.5, 1, 0.5);
+      R('#3a3f55', -2, -5.5, 4, 0.5); R('#e8e2d0', 4, -6.5, 1.5, 1.5); R('#c94f4f', 4, -6.5, 1.5, 0.5);
+      if (k > 0.4) { R('#8a5a3a', 8, -3, 3, 3); R('#3fae7a', 7, -6, 5, 3); R('#57c08a', 8, -7, 3, 1); R('#2f8a5f', 9, -5, 1, 1); }
+      else { R('#e8e2d0', 8, -13, 6, 5); R('#c94f4f', 9, -12, 1, 3); R('#3fae7a', 11, -11, 1, 2); R('#5b8def', 12, -12, 1, 3); R('#9aa0b0', 8, -8, 6, 0.5); } // chart on wall
       break;
     case 'bakery': // glass case with loaves, oven glow
-      R('#8a5a3a', -9, -5, 12, 5); R('#c9e8f0', -9, -9, 12, 4); R('#e8e2d0', -9, -10, 12, 1);
-      R('#d9a05a', -8, -8, 3, 2); R('#b97a3a', -4, -8, 3, 2); R('#e8c07a', 0, -8, 2, 2); R('#d9a05a', -7, -4, 4, 1);
-      R('#5a5f6b', 5, -10, 6, 10); R('#2b2f3a', 6, -8, 4, 3);
-      R(Math.sin(t * 7 + k) > 0 ? '#ff9a3a' : '#ffb84d', 6, -7, 4, 2);
+      R('#8a5a3a', -9, -5, 12, 5); R('#6b4a3a', -8.5, -4, 11, 0.5); R('#a87a52', -8.5, -2.5, 11, 0.5);
+      R('#c9e8f0', -9, -10, 12, 5); R('#e8e2d0', -9, -10.5, 12, 1); R('#9aa0b0', -9, -5.5, 12, 0.5);
+      R('#ffffff', -8, -9, 0.5, 2.5);
+      for (const [x, c] of [[-8, '#d9a05a'], [-4.5, '#b97a3a'], [-1.5, '#e8c07a']]) { R(c, x, -8, 3, 2); R(mix(c, '#000000', 0.3), x + 0.5, -7.5, 0.5, 1); R(mix(c, '#000000', 0.3), x + 1.5, -7.5, 0.5, 1); R(mix(c, '#ffffff', 0.35), x + 0.5, -8, 1.5, 0.5); }
+      R('#d9a05a', -7, -4, 4, 1); R('#e8c07a', -2.5, -4, 3, 1);
+      R('#5a5f6b', 5, -11, 6, 11); R('#2b2f3a', 6, -8.5, 4, 4); R('#8a8f9c', 5, -11, 6, 0.5); R('#e7c34a', 9, -10, 1, 1);
+      R(Math.sin(t * 7 + k) > 0 ? '#ff9a3a' : '#ffb84d', 6.5, -7.5, 3, 2); R('#ffd166', 7.5, -7, 1, 1);
+      R('#9aa0b0', 6, -4, 4, 0.5);
       break;
     case 'noodle': { // lanterns, counter, steaming bowls
-      R('#c94f4f', -8, -15, 3, 3); R('#e7c34a', -8, -15, 3, 1); R('#c94f4f', 5, -15, 3, 3); R('#e7c34a', 5, -15, 3, 1);
-      R('#6b4a3a', -9, -5, 18, 5); R('#8a5a3a', -9, -5, 18, 1);
-      R('#e8e2d0', -6, -7, 4, 2); R('#e8e2d0', 2, -7, 4, 2);
+      for (const x of [-8, 5]) { R('#6b4a3a', x + 1.5, -16, 0.5, 1); R('#c94f4f', x, -15, 3.5, 3.5); R('#e7c34a', x, -15, 3.5, 0.5); R('#e7c34a', x, -12, 3.5, 0.5); R('#8a2f28', x + 1.5, -14.5, 0.5, 2.5); R('#e7c34a', x + 1.5, -11.5, 0.5, 1); }
+      R('#6b4a3a', -9, -5, 18, 5); R('#8a5a3a', -9, -5, 18, 1); R('#4a3326', -8.5, -3.5, 17, 0.5);
+      for (let x = -8; x < 8; x += 3) R('#5a3f2e', x, -3, 0.5, 3);
+      for (const x of [-6, 2]) { R('#e8e2d0', x, -7.5, 4, 2.5); R('#c94f4f', x, -7, 4, 0.5); R('#f0d27a', x + 0.5, -8, 3, 0.5); R('#9aa0b0', x + 3, -9, 0.5, 2); R('#9aa0b0', x + 3.5, -9, 0.5, 2); }
       const st = Math.floor(t * 4 + k * 4) % 2;
-      R('rgba(255,255,255,.55)', -5 + st, -10, 1, 2); R('rgba(255,255,255,.55)', 3 + (1 - st), -10, 1, 2);
-      R('rgba(255,255,255,.35)', -4 - st, -12, 1, 2); R('rgba(255,255,255,.35)', 4 - st, -12, 1, 2);
+      R('rgba(255,255,255,.55)', -5 + st, -10.5, 1, 2); R('rgba(255,255,255,.55)', 3 + (1 - st), -10.5, 1, 2);
+      R('rgba(255,255,255,.35)', -4 - st, -12.5, 1, 2); R('rgba(255,255,255,.35)', 4 - st, -12.5, 1, 2);
       break; }
     case 'pizza': { // brick oven with fire, pizza on peel
       R('#8a4a3a', -9, -12, 11, 12); R('#6b3a2d', -9, -12, 11, 1); R('#1a1214', -7, -8, 7, 5);
@@ -249,7 +337,14 @@ function alt(R, shop, k, t) {
     case 'bakery': R('#9aa0b0', -1, -2, 1, 2); R('#e8e2d0', -4, -3, 7, 1); R('#f0b0c0', -3, -6, 5, 3); R('#e8e2d0', -3, -7, 5, 1); R('#c94f4f', -1, -8, 1, 1); R('#8a5a3a', 5, -11, 5, 4); R('#e8e2d0', 6, -10, 3, 1); break; // cake, menu
     case 'noodle': R('#1e2230', -7, -13, 8, 6); R('#e8e2d0', -6, -12, 2, 1); R('#e8e2d0', -6, -10, 4, 1); R('#e7c34a', -2, -12, 2, 1); for (const x of [-5, 0, 5]) { R('#c94f4f', x, -4, 3, 1); R('#5a5f6b', x + 1, -3, 1, 3); } break; // menu, stools
     case 'pizza': R('#c94f4f', -5, -5, 10, 1); R('#e8e2d0', -4, -5, 1, 1); R('#e8e2d0', -2, -5, 1, 1); R('#e8e2d0', 0, -5, 1, 1); R('#e8e2d0', 2, -5, 1, 1); R('#6b4a3a', -1, -4, 2, 4); R('#e7c34a', -2, -6, 4, 1); R('#6b4a3a', 7, -6, 1, 6); R('#6b4a3a', 7, -3, 3, 1); break; // table, chair
-    case 'butch': R('#e8f4f7', -7, -8, 14, 8); R('#c9e8f0', -6, -7, 12, 3); R('#c45a5a', -5, -6, 3, 1); R('#b8473a', -1, -6, 3, 1); R('#e8b4a8', 3, -6, 2, 1); R('#9aa0b0', -7, -1, 14, 1); break; // chiller
+    case 'butch': // chiller: glass front, shelves of cuts, price tags, vent grille
+      R('#d6e0e4', -7, -9, 14, 9); R('#e8f4f7', -7, -9, 14, 1); R('#9fc9d6', -6, -8, 12, 5.5); R('#c9e8f0', -6, -8, 12, 1);
+      R('#ffffff', -5.5, -7.5, 0.5, 4); R('#aee0ee', -4.5, -7.5, 0.5, 2);
+      R('#9aa0b0', -6, -6.5, 12, 0.5);
+      R('#c45a5a', -5, -6, 3, 2); R('#e8b4a8', -4.5, -5.5, 1, 0.5); R('#b8473a', -1, -6, 3, 2); R('#e8b4a8', -0.5, -5.5, 0.5, 1); R('#d98a8a', 3, -6, 3, 2); R('#e8b4a8', 4, -5.5, 1, 0.5);
+      R('#e8e2d0', -5, -4.5, 1.5, 1); R('#e8e2d0', -1, -4.5, 1.5, 1); R('#e8e2d0', 3, -4.5, 1.5, 1);
+      R('#5a5f6b', -6, -2.5, 12, 2.5); for (let x = -5; x < 6; x += 1.5) R('#2b2f3a', x, -2, 0.5, 1.5);
+      break; // chiller
     case 'fish': R('#8a6a3c', -6, -4, 10, 4); R('#6b512d', -6, -2, 10, 1); R('#9aa0b0', -5, -5, 3, 1); R('#c9c2ae', -1, -5, 3, 1); R('#9aa0b0', -4, -6, 3, 1); R('#3a5a60', 5, -14, 1, 6); R('#3a5a60', 3, -12, 5, 1); R('#3a5a60', 4, -10, 3, 1); break; // crate, net
     case 'deli': R('#2b2f3a', -4, -14, 9, 14); R('#7fd0ff', -3, -13, 7, 12); for (const y of [-12, -9, -6, -3]) { R('#c94f4f', -2, y, 1, 2); R('#e7c34a', 0, y, 1, 2); R('#57c08a', 2, y, 1, 2); } break; // drinks fridge
     case 'nut': R('#c9a77a', -4, -6, 7, 6); R('#a8865a', -4, -6, 7, 1); R('#d9a05a', -3, -7, 5, 1); R('#9aa0b0', 2, -9, 1, 3); R('#9aa0b0', 1, -9, 3, 1); R('#3a3f55', 6, -9, 4, 9); R('#e7c34a', 7, -7, 2, 1); break; // sack, scale
@@ -308,6 +403,12 @@ function floorStatic(ctx, x, y, W, H, fl) {
   ctx.fillStyle = '#12141c'; ctx.fillRect(x + W - 1, y, 1, H);
   ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
   ctx.fillStyle = '#3a3d4c'; ctx.fillRect(x - 1, y + H + 1, W + 2, 1);
+  ctx.fillStyle = '#7a7f94'; ctx.fillRect(x - 1, y + H, W + 2, 0.5); // slab highlight
+  ctx.fillStyle = '#2a2d3a'; for (let k = 2; k < W; k += 4) ctx.fillRect(x + k, y + H + 1, 0.5, 0.5); // rivets
+  for (const sg of segs) {
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(sg.sx + 1, y, 0.5, H); // divider light edge
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(sg.sx + 2, y + 5, sg.sw - 3, 0.5); // awning shadow
+  }
   return segs;
 }
 
@@ -337,26 +438,27 @@ function floor(ctx, x, y, W, H, fl, t, goal, fx = null) {
   }
   ctx.drawImage(c.cv, x - 1, y, W + 2, H + 2);
   const seed = hash(fl.day);
-  {
+  const protein = c.segs.find((sg) => sg.i === 0 && sg.sw >= 15);
+  outlined(ctx, x - 1, y, W + 2, H + 2, (g) => {
     for (const sg of c.segs) {
-      const sx = sg.sx - 1 + x;
-      if (sg.sw > 14) { // props, clipped to the shop
-        ctx.save(); ctx.beginPath(); ctx.rect(sx + 2, y + 6, sg.sw - 4, H - 6); ctx.clip();
-        let slot = seed % 2;
-        for (let cx = sx + 10; cx < sx + sg.sw - 7; cx += fl.busy ? 14 : 21) prop(ctx, sg.shop, cx, y + H - 4, rng(seed + cx - x), t, slot++);
-        if (fl.busy) extra(ctx, sx + sg.sw - 6, y + H - 4, rng(seed + sg.sx)());
-        ctx.restore();
-      }
-      if (sg.i === 0 && sg.sw >= 15) { // protein shop: neon sign, and the blue surge during the beat
-        const on = fx?.neon ?? (fl.proteinHit ? 1 : null);
-        const mid = sx + Math.floor(sg.sw / 2);
-        if (fx?.surge && fx.surge.a > 0 && fx.surge.fade > 0) {
-          const hh = Math.round(H * fx.surge.a);
-          ctx.fillStyle = `rgba(127,208,255,${(0.35 * fx.surge.fade).toFixed(2)})`; ctx.fillRect(sx + 1, y + H - hh, sg.sw - 1, hh);
-        }
-        if (on !== null) neon(ctx, mid, y + 4, on);
-      }
+      if (sg.sw <= 14) continue;
+      const sx = sg.sx - 1 + x; // props, clipped to the shop
+      g.save(); g.beginPath(); g.rect(sx + 2, y + 6, sg.sw - 4, H - 6); g.clip();
+      let slot = seed % 2;
+      for (let cx = sx + 10; cx < sx + sg.sw - 7; cx += fl.busy ? 14 : 21) prop(g, sg.shop, cx, y + H - 4, rng(seed + cx - x), t, slot++);
+      if (fl.busy) extra(g, sx + sg.sw - 6, y + H - 4, rng(seed + sg.sx)());
+      g.restore();
     }
+  });
+  if (protein) { // protein shop: neon sign, and the blue surge during the beat
+    const sx = protein.sx - 1 + x;
+    const on = fx?.neon ?? (fl.proteinHit ? 1 : null);
+    const mid = sx + Math.floor(protein.sw / 2);
+    if (fx?.surge && fx.surge.a > 0 && fx.surge.fade > 0) {
+      const hh = Math.round(H * fx.surge.a);
+      ctx.fillStyle = `rgba(127,208,255,${(0.35 * fx.surge.fade).toFixed(2)})`; ctx.fillRect(sx + 1, y + H - hh, protein.sw - 1, hh);
+    }
+    if (on !== null) neon(ctx, mid, y + 4, on);
   }
   const n = fl.live ? 1 : fl.walkers;
   if (n > 0) {
@@ -394,14 +496,27 @@ function emptyTonight(ctx, x, y, W, H) {
 // Lobby for short towers: dark front, glass doors, a lit sign. Then pavement.
 const GROUND_H = 8;
 function lobby(ctx, x, y, W, H, built = false) {
+  outlined(ctx, x - 1, y, W + 2, H + 2, (g) => lobbyFront(g, x, y, W, H, built));
+  ctx.fillStyle = '#16181d'; ctx.fillRect(0, y + H + 2, ctx.canvas.width / PX, GROUND_H - 2);
+  ctx.fillStyle = '#2d3244'; ctx.fillRect(0, y + H + 2, ctx.canvas.width / PX, 1);
+  return H + GROUND_H;
+}
+function lobbyFront(ctx, x, y, W, H, built) {
   ctx.fillStyle = '#23262f'; ctx.fillRect(x, y, W, H);
   ctx.fillStyle = '#12141c'; ctx.fillRect(x, y, 1, H); ctx.fillRect(x + W - 1, y, 1, H);
+  ctx.fillStyle = '#2d3140'; for (let yy = 8; yy < H; yy += 3) for (let k = (yy / 3) % 2 ? 0 : 2; k < W - 2; k += 4) ctx.fillRect(x + 1 + k, y + yy, 2, 0.5); // brick courses
   ctx.fillStyle = '#ffd166'; ctx.fillRect(x + 4, y + 3, W - 8, 3);
+  ctx.fillStyle = '#fff0b0'; ctx.fillRect(x + 4, y + 3, W - 8, 0.5);
   ctx.fillStyle = '#7a6230'; ctx.fillRect(x + 4, y + 6, W - 8, 1);
+  ctx.fillStyle = '#a8801f'; for (let k = 7; k < W - 10; k += 3) ctx.fillRect(x + k, y + 4, 1.5, 1.5); // sign lettering
   const dw = Math.min(W - 12, 22), dx = x + Math.floor((W - dw) / 2);
+  ctx.fillStyle = '#5a5e70'; ctx.fillRect(dx - 1, y + 8.5, dw + 2, H - 8.5); // door frame
   ctx.fillStyle = '#7fd0ff'; ctx.fillRect(dx, y + 9, dw, H - 9);
+  ctx.fillStyle = '#4fa8d8'; ctx.fillRect(dx, y + 9, dw, 1);
   ctx.fillStyle = '#12141c'; ctx.fillRect(dx + Math.floor(dw / 2), y + 9, 1, H - 9);
-  ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(dx + 2, y + 10, 1, 5);
+  ctx.fillStyle = '#e8e2d0'; ctx.fillRect(dx + Math.floor(dw / 2) - 1.5, y + 14, 0.5, 2.5); ctx.fillRect(dx + Math.floor(dw / 2) + 1, y + 14, 0.5, 2.5); // handles
+  ctx.fillStyle = '#5a5e70'; ctx.fillRect(dx, y + H - 1.5, dw, 1.5); // kick plate
+  ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(dx + 2, y + 10, 1, 5); ctx.fillRect(dx + 4, y + 10, 0.5, 3);
   if (built) {
     // Canopy over the doors, with posts and a small sign.
     const cw = dw + 8, cx0 = dx - 4;
@@ -411,9 +526,6 @@ function lobby(ctx, x, y, W, H, built = false) {
     ctx.fillStyle = '#12141c'; ctx.fillRect(dx + Math.floor(dw / 2) - 4, y + 4, 9, 1);
   }
   ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
-  ctx.fillStyle = '#16181d'; ctx.fillRect(0, y + H + 2, ctx.canvas.width / PX, GROUND_H - 2);
-  ctx.fillStyle = '#2d3244'; ctx.fillRect(0, y + H + 2, ctx.canvas.width / PX, 1);
-  return H + GROUND_H;
 }
 
 // ---------- layout and drawing ----------
@@ -478,7 +590,7 @@ export function drawTower(canvas, m, opts = {}, layout = sizeTower(canvas, m, op
     ctx.imageSmoothingEnabled = false;
     const a = Math.max(0, y0, ch.y0), z = Math.min(lh, y1, ch.y1);
     ctx.clearRect(0, a, lw, z - a);
-    if (ch.r0 === 0 && y0 <= top) roof(ctx, 0, roofTop, lw, opts.fx?.flag ?? (m.tonight?.inBand ? 1 : 0), t, m.built);
+    if (ch.r0 === 0 && y0 <= top) outlined(ctx, -1, 0, lw + 2, roofTop + 1, (g) => roof(g, 0, roofTop, lw, opts.fx?.flag ?? (m.tonight?.inBand ? 1 : 0), t, m.built));
     for (let i = ch.r0; i < ch.r1; i++) {
       const row = rows[i], y = ys[i];
       const h = row.kind === 'lobby' ? H + GROUND_H : H + 2;
