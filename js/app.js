@@ -227,6 +227,9 @@ function statusPill(text, tone) {
   return pill;
 }
 
+// Kept across re-renders so adding a meal does not snap the accordion shut.
+let moreOpen = false;
+
 function renderSummary() {
   const today = localDay(new Date());
   const t = totals(state.entries.filter((e) => e.day === today).flatMap((e) => e.items));
@@ -259,10 +262,15 @@ function renderSummary() {
       avg?.days >= 3 ? el('span', {}, `${avg.days}-day avg ${fmt(avg.kcal)}`) : null,
       m.budget && !m.budget.onTrack ? el('span', { class: 'week-budget' }, `≈${fmt(Math.round(m.budget.budget / 10) * 10)}/day to land the week`) : null),
     el('div', { class: 'bars' }, MACRO_KEYS.map((m) => bar(m, t[m], state.targets[m]))),
+    el('details', {
+      class: 'more-nutrients', open: moreOpen || null,
+      ontoggle: (e) => { moreOpen = e.currentTarget.open; },
+    },
+    el('summary', {}, 'More nutrients'),
     el('div', { class: 'bars' },
       limitBar('Sugar', t.sugar, state.targets.sugar, 'g'),
       limitBar('Fibre', t.fibre, state.targets.fibre, 'g', true),
-      limitBar('Sodium', t.sodium, state.targets.sodium, 'mg')),
+      limitBar('Sodium', t.sodium, state.targets.sodium, 'mg'))),
   ].filter(Boolean));
   const beat = beatFor(m.tonight, today, m.tonight?.budget || goal, scene, m.scores);
   fillScene(slot, m, beat);

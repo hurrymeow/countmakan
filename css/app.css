@@ -496,3 +496,11 @@ body:has(.sheet[open]) { overflow: hidden; }
 .tower-empty { margin: 0 var(--s-6) var(--s-4); padding: var(--s-4); text-align: center; color: var(--text-2); background: rgb(14 14 24 / .72); border-radius: var(--r); }
 .tower-empty strong { color: var(--text); }
 .scene-fx { position: absolute; z-index: 3; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+
+/* Sugar, fibre and sodium sit behind a quiet accordion on Today. */
+.more-nutrients { margin-top: var(--s-2); }
+.card > .more-nutrients:last-child:not([open]) { margin-bottom: calc(-1 * var(--s-3)); }
+.more-nutrients summary { font-size: .875rem; font-weight: 400; color: var(--text-2); }
+.more-nutrients summary::after { content: "›"; margin-left: var(--s-1); transition: transform .15s; }
+.more-nutrients[open] summary::after { transform: rotate(90deg); }
+.more-nutrients .bars { margin-top: var(--s-1); }
