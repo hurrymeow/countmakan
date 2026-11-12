@@ -95,6 +95,25 @@ test('tower: tap-in view opens at the top, closes with Escape and Back', async (
   await expect(view).toBeHidden();
 });
 
+test('tower: a 200-floor tap-in view stacks canvases under the browser limit and draws them all', async ({ page }) => {
+  await seedKeys(page);
+  await open(page);
+  await seed(page, 200);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  const view = page.locator('.tower-view');
+  await page.locator('#summary .scene').click();
+  await expect(view).toBeVisible();
+  const cv = view.locator('.tower-stack canvas');
+  expect(await cv.count()).toBeGreaterThan(1);
+  const sizes = await cv.evaluateAll((all) => all.map((c) => c.height));
+  expect(Math.max(...sizes)).toBeLessThan(16384);
+  await view.locator('.tower-scroll').evaluate((n) => { n.scrollTop = n.scrollHeight; });
+  await page.waitForTimeout(300);
+  const filled = await cv.last().evaluate((c) => c.getContext('2d').getImageData(0, Math.max(0, c.height - 400), c.width, 300).data.some((v) => v > 0));
+  expect(filled).toBe(true);
+});
+
 test('tower: sticky week bar follows the scroll and seams mark weeks', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedKeys(page);

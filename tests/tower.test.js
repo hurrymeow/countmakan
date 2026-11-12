@@ -216,5 +216,6 @@ test('stations: one per prop, shared by shop actions, and the activity loop is 1
   assert.equal(calm.length, 5); // props every 21 px from +10, stopping 7 px short of the shop edge
   assert.ok(busy.length > calm.length);
   assert.ok(calm.every((s) => s.dir === 1 || s.dir === -1));
+  assert.deepEqual([...new Set(calm.map((s) => s.shop))].sort(), ['noodle', 'sport']); // residents dress for the shop they stand in
   assert.deepEqual(calm.slice(0, 2).map((s) => s.act).sort(), ['lift', 'run']);
 });
