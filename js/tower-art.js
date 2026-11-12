@@ -6,6 +6,9 @@ import { hash, skylineFor } from './tower.js';
 
 // Floor aspect: width over height, in the low-res buffer.
 export const FLOOR_RATIO = 2.4;
+// Buffer pixels per layout unit. Layout maths stays in 1x units; fine detail draws at 0.5 units.
+export const PX = 2;
+const MAX_BUF = 12000; // tallest canvas buffer in px. Taller towers stack several canvases (browsers cap near 16384).
 export const LOOP = 8; // seconds. Every walker returns to its start, so the loop is seamless.
 const MAC = ['#3987e5', '#d95926', '#199e70'];
 const FIG_H = 14;
@@ -262,26 +265,6 @@ function neon(ctx, cx, y, on) {
   ctx.fillRect(cx - 4, y - 3, 1, 4); ctx.fillRect(cx - 3, y - 2, 1, 2); ctx.fillRect(cx - 2, y - 1, 5, 1); ctx.fillRect(cx + 3, y - 2, 1, 2); ctx.fillRect(cx + 4, y - 3, 1, 4);
 }
 
-function walker(ctx, w, st, x, y, W, H, cheer = 0, t = 0) {
-  const { x: wx } = st;
-  const f = cheer ? 1 : st.frame; // cheering feet stay together
-  const px = Math.round(x + wx), b = y + H - 3, d = w.dir;
-  const top = b - 14 - (f % 2) - (cheer ? Math.abs(Math.round(Math.sin(t * 12) * 2)) : 0);
-  const R = (c, dx, dy, ww, hh) => { ctx.fillStyle = c; ctx.fillRect(px + (d > 0 ? dx : -dx - ww + 1), dy, ww, hh); };
-  const P = PANTS[w.look];
-  if (f % 2 === 0) { // contact frames: legs spread
-    R(P, -2, b - 5, 1, 3); R(P, -3, b - 2, 1, 2); R(P, 1, b - 5, 1, 3); R(P, 2, b - 2, 1, 2);
-    R('#1a1a1a', -4, b - 1, 2, 1); R('#1a1a1a', 2, b - 1, 2, 1);
-  } else { // passing frames: legs together
-    R(P, -1, b - 6, 2, 6); R(mix(P, '#000000', 0.4), 0, b - 3, 1, 3); R('#1a1a1a', -1, b - 1, 3, 1);
-  }
-  R(SHIRT[w.look], -2, top + 5, 4, 5); R(mix(SHIRT[w.look], '#000000', 0.25), -2, top + 9, 4, 1);
-  const swing = f === 0 ? 1 : f === 2 ? -1 : 0;
-  if (cheer) { R(SKIN[w.look], -3, top, 1, 5); R(SKIN[w.look], 2, top, 1, 5); } // both arms up
-  else R(SKIN[w.look], -1 - swing, top + 6, 1, 3);
-  R(SKIN[w.look], -2, top, 4, 4); R('#2a1e18', -2, top, 4, 1); R('#2a1e18', -2, top + 1, 1, 2); R('#1a1a1a', 1, top + 2, 1, 1);
-}
-
 // One small extra item at the end of a busy shop: a plant, a wall poster or a crate.
 function extra(ctx, cx, b, k) {
   const R = (c, x, y, w, h) => { ctx.fillStyle = c; ctx.fillRect(cx + x, b + y, w, h); };
@@ -346,11 +329,13 @@ function floor(ctx, x, y, W, H, fl, t, goal, fx = null) {
   let c = statics.get(fl);
   if (!c || c.W !== W || c.H !== H) {
     const cv = document.createElement('canvas');
-    cv.width = W + 2; cv.height = H + 2;
-    c = { cv, W, H, segs: floorStatic(cv.getContext('2d'), 1, 0, W, H, fl) };
+    cv.width = (W + 2) * PX; cv.height = (H + 2) * PX;
+    const g = cv.getContext('2d');
+    g.scale(PX, PX);
+    c = { cv, W, H, segs: floorStatic(g, 1, 0, W, H, fl) };
     statics.set(fl, c);
   }
-  ctx.drawImage(c.cv, x - 1, y);
+  ctx.drawImage(c.cv, x - 1, y, W + 2, H + 2);
   const seed = hash(fl.day);
   {
     for (const sg of c.segs) {
@@ -376,7 +361,14 @@ function floor(ctx, x, y, W, H, fl, t, goal, fx = null) {
   const n = fl.live ? 1 : fl.walkers;
   if (n > 0) {
     ctx.save(); ctx.beginPath(); ctx.rect(x + 1, y, W - 2, H); ctx.clip();
-    if (fl.live && fx?.cheer) for (const w of walkersFor(seed, n, W)) walker(ctx, w, walkerState(w, t, W), x, y, W, H, 1, t);
+    if (fl.live && fx?.cheer) {
+      for (const w of walkersFor(seed, n, W)) {
+        const px = Math.round(x + walkerState(w, t, W).x);
+        const sg = c.segs.find((g) => px >= g.sx - 1 + x && px < g.sx - 1 + x + g.sw) || c.segs[0];
+        const hop = Math.abs(Math.round(Math.sin(t * 12) * 2));
+        person(ctx, { dir: w.dir, look: w.look }, 'cheer', 0, 0, px, y + H - 3 - hop, t, sg?.shop);
+      }
+    }
     else actors(ctx, c.segs, fl, seed, n, x, y, W, H, t);
     ctx.restore();
   }
@@ -419,8 +411,8 @@ function lobby(ctx, x, y, W, H, built = false) {
     ctx.fillStyle = '#12141c'; ctx.fillRect(dx + Math.floor(dw / 2) - 4, y + 4, 9, 1);
   }
   ctx.fillStyle = '#5a5e70'; ctx.fillRect(x - 1, y + H, W + 2, 2);
-  ctx.fillStyle = '#16181d'; ctx.fillRect(0, y + H + 2, ctx.canvas.width, GROUND_H - 2);
-  ctx.fillStyle = '#2d3244'; ctx.fillRect(0, y + H + 2, ctx.canvas.width, 1);
+  ctx.fillStyle = '#16181d'; ctx.fillRect(0, y + H + 2, ctx.canvas.width / PX, GROUND_H - 2);
+  ctx.fillStyle = '#2d3244'; ctx.fillRect(0, y + H + 2, ctx.canvas.width / PX, 1);
   return H + GROUND_H;
 }
 
@@ -437,8 +429,10 @@ function prepare(m, { limit = Infinity, ground = false }) {
   return rows;
 }
 
-// Size the canvas to the tower. `W` is the CSS width in px, `u` the pixel scale (2 on Today, 3 in the tap-in view).
-// Returns the layout, which drawTower and animate reuse.
+// Size the canvas to the tower. `W` is the CSS width in px, `u` the CSS px per layout unit (2 on Today, 3 in the tap-in view).
+// The buffer is PX times the layout, so each art pixel is 1/PX of a unit. A very tall tower is split into stacked canvases
+// (the extra ones follow `canvas` in the DOM), each holding whole floors. Returns the layout, which drawTower and animate reuse.
+const extras = new WeakMap();
 export function sizeTower(canvas, m, { W, mode = 'today', limit, ground } = {}) {
   const u = mode === 'view' ? 3 : 2;
   const lw = Math.max(40, Math.round(W / u));
@@ -446,32 +440,53 @@ export function sizeTower(canvas, m, { W, mode = 'today', limit, ground } = {}) 
   const rows = prepare(m, { limit, ground });
   const roofTop = roofTopFor(m);
   const top = roofTop + SKY_PAD;
-  const lh = top + rows.reduce((a, r) => a + (r.kind === 'lobby' ? H + GROUND_H : H + 2), 0);
-  canvas.width = lw; canvas.height = lh;
-  canvas.style.width = `${lw * u}px`; canvas.style.height = `${lh * u}px`;
-  canvas.style.imageRendering = 'pixelated';
+  const ys = [];
+  let lh = top;
+  for (const r of rows) { ys.push(lh); lh += r.kind === 'lobby' ? H + GROUND_H : H + 2; }
+  const chunks = [];
+  let cur = { y0: 0, r0: 0 };
+  rows.forEach((r, i) => {
+    const end = i + 1 < rows.length ? ys[i + 1] : lh;
+    if (i > cur.r0 && (end - cur.y0) * PX > MAX_BUF) { cur.y1 = ys[i]; cur.r1 = i; chunks.push(cur); cur = { y0: ys[i], r0: i }; }
+  });
+  cur.y1 = lh; cur.r1 = rows.length; chunks.push(cur);
+  extras.get(canvas)?.forEach((c) => c.remove());
+  const more = [];
+  chunks.forEach((ch, i) => {
+    let cv = canvas;
+    if (i) { cv = document.createElement('canvas'); (more[i - 2] || canvas).after(cv); more.push(cv); }
+    cv.width = lw * PX; cv.height = (ch.y1 - ch.y0) * PX;
+    cv.style.width = `${lw * u}px`; cv.style.height = `${(ch.y1 - ch.y0) * u}px`;
+    cv.style.imageRendering = 'pixelated';
+    ch.canvas = cv;
+  });
+  extras.set(canvas, more);
   canvas.dataset.roofTop = String(roofTop);
   canvas.dataset.floors = String(rows.filter((r) => r.kind === 'floor' && !r.fl.live).length);
-  return { u, lw, lh, H, rows, top, roofTop };
+  return { u, lw, lh, H, rows, ys, top, roofTop, chunks };
 }
 
-// Draws the tower at time t (seconds). With `range` ([y0, y1] in buffer px) only floors in view are redrawn.
+// Draws the tower at time t (seconds). With `range` ([y0, y1] in layout units) only floors in view are redrawn.
 export function drawTower(canvas, m, opts = {}, layout = sizeTower(canvas, m, opts), t = 1.3) {
-  const ctx = canvas.getContext('2d');
-  const { lw, lh, H, rows, top, roofTop } = layout;
+  const { lw, lh, H, rows, ys, top, roofTop, chunks } = layout;
   const [y0, y1] = opts.range || [0, lh];
   const goal = opts.goal;
-  ctx.clearRect(0, Math.max(0, y0), lw, Math.min(lh, y1) - Math.max(0, y0));
-  if (y0 <= top) roof(ctx, 0, roofTop, lw, opts.fx?.flag ?? (m.tonight?.inBand ? 1 : 0), t, m.built);
-  let y = top;
-  for (const row of rows) {
-    const h = row.kind === 'lobby' ? H + GROUND_H : H + 2;
-    if (y + h >= y0 && y <= y1) {
+  for (const ch of chunks) {
+    if (y1 < ch.y0 || y0 > ch.y1) continue;
+    const ctx = ch.canvas.getContext('2d');
+    ctx.setTransform(PX, 0, 0, PX, 0, -ch.y0 * PX);
+    ctx.imageSmoothingEnabled = false;
+    const a = Math.max(0, y0, ch.y0), z = Math.min(lh, y1, ch.y1);
+    ctx.clearRect(0, a, lw, z - a);
+    if (ch.r0 === 0 && y0 <= top) roof(ctx, 0, roofTop, lw, opts.fx?.flag ?? (m.tonight?.inBand ? 1 : 0), t, m.built);
+    for (let i = ch.r0; i < ch.r1; i++) {
+      const row = rows[i], y = ys[i];
+      const h = row.kind === 'lobby' ? H + GROUND_H : H + 2;
+      if (y + h < y0 || y > y1) continue;
       if (row.kind === 'floor') floor(ctx, 0, y, lw, H, row.fl, t, goal, row.fl.live ? opts.fx : null);
       else if (row.kind === 'empty') emptyTonight(ctx, 0, y, lw, H);
       else lobby(ctx, 0, y, lw, H, m.built?.includes('lobby'));
     }
-    y += h;
   }
   return layout;
 }
@@ -582,12 +597,14 @@ export function playOverlay(scene, towerCanvas, ringEl, m, beat) {
   const u = 2;
   const ov = document.createElement('canvas');
   const sr = scene.getBoundingClientRect();
-  ov.width = Math.ceil(sr.width / u); ov.height = Math.ceil(sr.height / u);
+  const ow = Math.ceil(sr.width / u), oh = Math.ceil(sr.height / u);
+  ov.width = ow * PX; ov.height = oh * PX;
   ov.className = 'scene-fx'; ov.setAttribute('aria-hidden', 'true');
   scene.append(ov);
   const ctx = ov.getContext('2d');
+  ctx.setTransform(PX, 0, 0, PX, 0, 0);
   const tr = towerCanvas.getBoundingClientRect(), rr = ringEl.getBoundingClientRect();
-  const tx = (tr.left - sr.left) / u, ty = (tr.top - sr.top) / u, tw = towerCanvas.width;
+  const tx = (tr.left - sr.left) / u, ty = (tr.top - sr.top) / u, tw = towerCanvas.width / PX;
   const rt = Number(towerCanvas.dataset.roofTop) || ROOF_TOP;
   const roofY = ty + rt, floorY = ty + rt + SKY_PAD, fh = Math.round(tw / FLOOR_RATIO);
   const rx = (rr.left - sr.left + rr.width / 2) / u, ry = (rr.top - sr.top + rr.height / 2) / u, R = rr.width / 2 / u;
@@ -610,7 +627,7 @@ export function playOverlay(scene, towerCanvas, ringEl, m, beat) {
     if (t > beat.dur + TAIL || !ov.isConnected) { stop(); return; }
     if (now - last >= 33) {
       last = now;
-      ctx.clearRect(0, 0, ov.width, ov.height);
+      ctx.clearRect(0, 0, ow, oh);
       if (both) searchlights(ctx, [tx + 14, tx + tw - 14], roofY, t, 1.8, t > beat.dur ? Math.max(0, 1 - (t - beat.dur) / TAIL) : 1);
       if (prot) sparkles(ctx, tx + 2, pw - 4, floorY + fh - 6, t, 1.0, '#8fd8ff', 10);
       if (cal) {
@@ -621,7 +638,7 @@ export function playOverlay(scene, towerCanvas, ringEl, m, beat) {
           ctx.beginPath(); ctx.arc(rx, ry, R + 2 + p * 10, 0, Math.PI * 2); ctx.stroke();
         }
       }
-      if (both) confetti(ctx, ov.width, ov.height, t, c0 + 0.9, 1.8);
+      if (both) confetti(ctx, ow, oh, t, c0 + 0.9, 1.8);
     }
     raf = requestAnimationFrame(frame);
   };
@@ -692,11 +709,13 @@ export function animate(canvas, m, opts = {}) {
     if (now - last >= FRAME_MS) { last = now; paint((now - start) / 1000 + 1.3); }
     if (visible) raf = requestAnimationFrame(frame);
   };
+  const seen = new Set();
   const io = new IntersectionObserver((rows) => {
-    visible = rows[rows.length - 1].isIntersecting;
+    for (const r of rows) { if (r.isIntersecting) seen.add(r.target); else seen.delete(r.target); }
+    visible = seen.size > 0;
     if (visible && !raf && !stopped) raf = requestAnimationFrame(frame);
   });
-  io.observe(canvas);
+  for (const ch of layout.chunks) io.observe(ch.canvas);
   raf = requestAnimationFrame(frame);
   return () => { stopped = true; io.disconnect(); cancelAnimationFrame(raf); };
 }
@@ -762,7 +781,7 @@ export function stations(segs, seed, x, busy) {
     let slot = seed % 2;
     for (let cx = sx + 10; cx < sx + sg.sw - 7; cx += busy ? 14 : 21) {
       const act = ACTS[sg.shop][slot++ % 2];
-      out.push({ act, x: cx + SPOT[act][0], dir: SPOT[act][1], lo: sx + 3, hi: sx + sg.sw - 3 });
+      out.push({ shop: sg.shop, act, x: cx + SPOT[act][0], dir: SPOT[act][1], lo: sx + 3, hi: sx + sg.sw - 3 });
     }
   }
   return out;
@@ -781,69 +800,172 @@ function actors(ctx, segs, fl, seed, n, x, y, W, H, t) {
     const look = Math.floor(r() * 6), off = r() * ALOOP;
     const u = reduced() ? 0.15 : ((t + off) % ALOOP) / ALOOP; // 0..1; reduced motion holds everyone mid-action at A
     const w = { dir: 1, look };
-    let px, act, dir, frame = 0, ph;
+    let px, act, dir, frame = 0, ph, shop = a.shop;
     if (u < 0.33) { px = a.x; act = a.act; dir = a.dir; }
     else if (u < 0.5) { const k = (u - 0.33) / 0.17; px = a.x + (b.x - a.x) * k; act = 'walk'; dir = b.x >= a.x ? 1 : -1; frame = Math.floor(Math.abs(b.x - a.x) * k / 3) % 4; }
-    else if (u < 0.83) { px = b.x; act = b.act; dir = b.dir; }
+    else if (u < 0.83) { px = b.x; act = b.act; dir = b.dir; shop = b.shop; }
     else { const k = (u - 0.83) / 0.17; px = b.x + (a.x - b.x) * k; act = 'walk'; dir = a.x >= b.x ? 1 : -1; frame = Math.floor(Math.abs(b.x - a.x) * k / 3) % 4; }
     if (b === a && act === 'walk') { act = a.act; px = a.x; dir = a.dir; }
     w.dir = dir;
     ph = Math.floor((t + off) * (act === 'run' ? 8 : act === 'slurp' || act === 'eat' || act === 'chat' || act === 'browse' ? 1.5 : 3.5)) % 2;
-    pose(ctx, w, act, ph, frame, Math.round(px), y + H - 3, t + off);
+    person(ctx, w, act, ph, frame, Math.round(px), y + H - 3, t + off, shop);
   }
   ctx.restore();
 }
-function pose(ctx, w, act, ph, frame, px, b, t) {
-  const d = w.dir, P = PANTS[w.look], S = SHIRT[w.look], K = SKIN[w.look];
-  const R = (c, dx, dy, ww, hh) => { ctx.fillStyle = c; ctx.fillRect(px + (d > 0 ? dx : -dx - ww + 1), dy, ww, hh); };
-  if (act === 'walk') { walker(ctx, w, { x: 0, frame }, px, 0, 0, b + 3); return; }
-  if (act === 'swim') { // head and a stroking arm above the water line
-    const top = b - 5 + (ph ? 1 : 0);
-    R(K, -2, top, 4, 4); R('#2a1e18', -2, top, 4, 1); R('#1a1a1a', 1, top + 2, 1, 1);
-    if (ph) { R(K, 3, top - 3, 1, 3); R(K, 2, top - 3, 1, 1); } else { R(K, -4, top + 2, 2, 1); R('#ffffff', 4, b - 3, 1, 1); R('#ffffff', -5, b - 3, 1, 1); }
+// ---------- residents ----------
+// Chibi figures are drawn at 2x: limbs are thick lines between joints, so every pose is a handful of numbers.
+// Each pose is drawn once to a small canvas, outlined, and cached by style, act, phase, frame, look, direction and role.
+const HAIR = ['#2a1e18', '#4a3020', '#1a1a1a', '#8a5a30', '#c9a060', '#6b6b6b'];
+const ROLE = { sport: 'gym', boxing: 'boxer', pool: 'swim', dojo: 'gi', office: 'suit', bakery: 'chef', noodle: 'noodle', pizza: 'pizza', butch: 'butcher', fish: 'fish', deli: 'deli', nut: 'nut' };
+// One in three people in a shop with no fixed kit is a customer in casual clothes.
+const roleFor = (shop, look) => (look % 3 === 2 && !['gym', 'boxer', 'swim', 'gi'].includes(ROLE[shop]) ? 'casual' : ROLE[shop] || 'casual');
+const SPR_W = 52, SPR_H = 60, SPR_OX = 26, SPR_OY = 54;
+
+function outline(cv, col) {
+  const g = cv.getContext('2d'), w = cv.width, h = cv.height;
+  const im = g.getImageData(0, 0, w, h), d = im.data, a = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : d[(y * w + x) * 4 + 3]);
+  const [r, gg, b] = hex(col), out = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (a(x, y) < 40 && (a(x - 1, y) > 160 || a(x + 1, y) > 160 || a(x, y - 1) > 160 || a(x, y + 1) > 160)) out.push((y * w + x) * 4);
+  for (const i of out) { d[i] = r; d[i + 1] = gg; d[i + 2] = b; d[i + 3] = 255; }
+  g.putImageData(im, 0, 0);
+}
+
+const sprites = new Map();
+// Draws one resident standing on `b` (the floor line, in layout units) at column `px`.
+function person(ctx, w, act, ph, frame, px, b, t, shop) {
+  const role = roleFor(shop, w.look);
+  const anim = act === 'toss' ? Math.floor(t * 6) % 4 : act === 'run' ? Math.floor(t * 8) % 4 : 0;
+  const key = [act, ph, frame, anim, w.look, w.dir, role].join();
+  let cv = sprites.get(key);
+  if (!cv) {
+    cv = document.createElement('canvas');
+    cv.width = SPR_W; cv.height = SPR_H;
+    fig(cv.getContext('2d'), w, act, ph, frame, anim, role);
+    outline(cv, '#15171f');
+    sprites.set(key, cv);
+  }
+  ctx.drawImage(cv, px - SPR_OX / PX, b - SPR_OY / PX, SPR_W / PX, SPR_H / PX);
+}
+
+function fig(g, w, act, ph, frame, anim, role) {
+  const TW = 9, LW = 3, TL = -4;
+  const ox = SPR_OX, oy = SPR_OY, dir = w.dir;
+  const P = (c, x, y, ww, hh) => { g.fillStyle = c; g.fillRect(dir > 0 ? ox + x : ox - x - ww, oy + y, ww, hh); };
+  const L = (c, a, bb, wd) => {
+    const n = Math.max(1, Math.round(Math.max(Math.abs(bb[0] - a[0]), Math.abs(bb[1] - a[1]))));
+    for (let i = 0; i <= n; i++) { const x = a[0] + (bb[0] - a[0]) * i / n, y = a[1] + (bb[1] - a[1]) * i / n; P(c, Math.round(x - wd / 2 + 0.01), Math.round(y - wd / 2 + 0.01), wd, wd); }
+  };
+  const K = SKIN[w.look], Kd = mix(K, '#000000', 0.22), HC = HAIR[w.look];
+  let S = SHIRT[w.look], Pn = PANTS[w.look], shoe = '#1e1f26', sleeve = true;
+  if (role === 'suit') { S = '#eef0f4'; Pn = '#2b3550'; }
+  if (role === 'gi') { S = '#f2efe6'; Pn = '#f2efe6'; }
+  if (role === 'gym') sleeve = false;
+  if (role === 'boxer') { sleeve = false; S = K; Pn = '#c94f4f'; }
+  if (role === 'chef') S = '#f4f1ea';
+  if (role === 'fish') shoe = '#3a6a48';
+  const Sd = mix(S, '#000000', 0.22), Pd = mix(Pn, '#000000', 0.3);
+  // joints in buffer px, feet at 0, facing right
+  let hip = [0, -12], sh = [0, -22], ff = [1, 0], bf = [-1, 0], fk = null, bk = null, fh = [2, -12], bh = [-2, -12], seat = false, cross = false, swim = false;
+  const walk = (f) => {
+    [ff, bf, fh, bh] = [[[4, 0], [-4, 0], [-3, -13], [3, -13]], [[1, 0], [-1, -2], [0, -12], [0, -12]], [[-4, 0], [4, 0], [3, -13], [-3, -13]], [[-1, -2], [1, 0], [0, -12], [0, -12]]][f];
+    if (f % 2) { hip = [0, -13]; sh = [0, -23]; }
+  };
+  const sit = () => { seat = true; hip = [0, -7]; sh = [0, -17]; fk = [5, -7]; bk = [4, -7]; ff = [5, 0]; bf = [4, 0]; fh = [3, -9]; bh = [1, -9]; };
+  let tool = null, bubble = false;
+  switch (act) {
+    case 'walk': walk(frame); break;
+    case 'cheer': ff = [2, 0]; bf = [-2, 0]; fh = [4, -32]; bh = [-4, -32]; break;
+    case 'run': walk(anim); sh = [1, sh[1]]; fh = [fh[0] + 1, fh[1] - 3]; bh = [bh[0], bh[1] - 3]; break;
+    case 'lift': ff = [3, 0]; bf = [-3, 0]; if (ph) { fh = [4, -31]; bh = [-4, -31]; } else { fh = [4, -22]; bh = [-4, -22]; } tool = 'bar'; break;
+    case 'punch': ff = [4, 0]; bf = [-4, 0]; fh = ph ? [11, -19] : [5, -18]; bh = [4, -21]; tool = 'gloves'; break;
+    case 'kick': if (ph) { ff = [11, -12]; fk = [5, -11]; bf = [-2, 0]; sh = [-2, -22]; hip = [-1, -12]; } else { ff = [4, 0]; bf = [-4, 0]; } fh = [4, -20]; bh = [2, -19]; break;
+    case 'swim': swim = true; break;
+    case 'sit': if (w.look % 2) { cross = true; hip = [0, -3]; sh = [0, -13]; fh = [3, -4]; bh = [-3, -4]; } else sit(); break;
+    case 'type': sit(); fh = [8, -14 - (ph ? 1 : 0)]; bh = [7, -13 + (ph ? 0 : -1)]; break;
+    case 'slurp': case 'eat': sit(); if (ph) { fh = [4, -23]; } else { fh = [8, -14]; } bh = [7, -13]; tool = act; break;
+    case 'chat': fh = [6, -17 - (ph ? 2 : 0)]; bubble = !!ph; break;
+    case 'knead': fh = [8, -12 - (ph ? 1 : 0)]; bh = [7, -12 + (ph ? 0 : -1)]; tool = 'dough'; break;
+    case 'toss': fh = [3, -31]; bh = [3, -16]; tool = 'pizza'; break;
+    case 'chop': case 'slice': fh = ph ? [6, -27] : [9, -14]; bh = [6, -14]; tool = 'knife'; break;
+    case 'scoop': if (ph) { sh = [4, -20]; fh = [9, -6]; bh = [6, -9]; } else { fh = [8, -12]; bh = [5, -12]; } tool = 'scoop'; break;
+    case 'browse': fh = ph ? [7, -20] : [2, -12]; break;
+    default: break;
+  }
+  // chibi: a short body under a big head
+  const sy = (p) => p && [p[0], Math.round(p[1] * 0.62)];
+  [hip, sh, ff, bf, fk, bk, fh, bh] = [hip, sh, ff, bf, fk, bk, fh, bh].map(sy);
+  if (role === 'suit' && act === 'walk') tool = 'case';
+  if (role === 'casual' && !seat && act !== 'browse' && act !== 'cheer') tool = tool || 'bag';
+  const arm = (s, h, front) => {
+    const m = [s[0] + (h[0] - s[0]) * 0.45, s[1] + (h[1] - s[1]) * 0.45], sc = front ? S : Sd;
+    if (sleeve) { L(sc, s, m, 2); L(front ? K : Kd, m, h, 2); } else L(front ? K : Kd, s, h, 2);
+    P(front ? K : Kd, Math.round(h[0]) - 1, Math.round(h[1]) - 1, 2, 2);
+  };
+  const leg = (hp, k, f, c) => { if (k) { L(c, hp, k, LW); L(c, k, f, LW); } else L(c, hp, f, LW); P(shoe, f[0] - 1, f[1] - 2, 4, 2); };
+  const head = () => {
+    const hx = sh[0], hy = sh[1];
+    const L0 = hx - 5, HW = 11, TOP = hy - 11, HH = 10;
+    if (!swim) P(K, hx - 1, hy - 2, 3, 2); // neck
+    P(K, L0 + 1, TOP, HW - 2, 1); P(K, L0, TOP + 1, HW, HH - 2); P(K, L0 + 1, TOP + HH - 1, HW - 2, 1);
+    // eyes with a highlight, blush, mouth
+    P('#1a1a1a', L0 + 5, TOP + 4, 1, 3); P('#1a1a1a', L0 + 8, TOP + 4, 1, 3); P('#ffffff', L0 + 5, TOP + 4, 1, 1); P('#ffffff', L0 + 8, TOP + 4, 1, 1);
+    P('#f09a8a', L0 + 9, TOP + 7, 1, 1); P('#f09a8a', L0 + 4, TOP + 7, 1, 1); P(Kd, L0 + 6, TOP + 8, 2, 1);
+    const st = w.look % 6;
+    let hc = HC;
+    if (role === 'swim' && act === 'swim') hc = '#3f7fe0';
+    if (st !== 5 || role === 'swim') { P(hc, L0 + 1, TOP - 1, HW - 2, 1); P(hc, L0, TOP, HW, 2); P(hc, L0, TOP + 2, 2, 2); P(hc, L0 + 2, TOP + 2, HW - 4, 1); }
+    if (st === 1) P(hc, L0 - 1, TOP + 1, 2, HH);
+    if (st === 2) P(hc, L0 - 2, TOP - 1, 3, 3);
+    if (st === 3) for (const k of [0, 2, 4]) P(hc, L0 + k, TOP - 2, 1, 1);
+    if (st === 4) P(hc, L0 - 1, TOP, 2, 5);
+    if (st === 5 && role !== 'swim') P(HAIR[0], L0, TOP + 2, 2, 2);
+    if (role === 'chef') { P('#ffffff', L0, TOP - 2, HW, 2); P('#ffffff', L0 - 1, TOP - 6, HW + 2, 4); P('#e4e0d6', L0 - 1, TOP - 3, HW + 2, 1); }
+    if (role === 'pizza') { P('#d64545', L0, TOP - 2, HW, 3); P('#b03535', L0 + HW, TOP, 3, 1); }
+    if (role === 'butcher' || role === 'deli') { P('#ffffff', L0, TOP - 2, HW, 2); P('#dedad0', L0, TOP - 1, HW, 1); }
+    if (role === 'noodle' || role === 'gym') P(role === 'gym' ? '#d64545' : '#ffffff', L0, TOP, HW, 1);
+    if (role === 'nut') { P('#8a5a3a', L0, TOP - 2, HW, 3); P('#6b4a3a', L0, TOP, HW, 1); }
+    if (role === 'swim' && act === 'sit') P('#1a1a1a', L0 + 3, TOP + 4, 6, 1);
+  };
+  if (swim) {
+    sh = [0, -1 + (ph ? 1 : 0)];
+    head();
+    if (ph) { L(K, [1, -3], [5, -12], 2); P(K, 4, -13, 2, 2); } else { L(K, [-1, -2], [-7, -2], 2); P('#ffffff', 8, -3, 1, 1); P('#ffffff', -9, -3, 1, 1); P('#ffffff', 7, -4, 1, 1); }
     return;
   }
-  const seated = act === 'type' || act === 'slurp' || act === 'eat' || act === 'sit';
-  const bend = act === 'scoop' && ph ? 2 : 0;
-  let top = b - 14 + (seated ? 3 : 0) + bend;
-  // legs
-  if (act === 'run') {
-    if (ph) { R(P, -2, b - 5, 1, 3); R(P, -3, b - 2, 1, 2); R(P, 1, b - 5, 1, 3); R(P, 2, b - 2, 1, 2); R('#1a1a1a', -4, b - 1, 2, 1); R('#1a1a1a', 2, b - 1, 2, 1); }
-    else { R(P, -1, b - 6, 2, 6); R('#1a1a1a', -1, b - 1, 3, 1); top -= 1; }
-  } else if (act === 'kick' && ph) {
-    R(P, -2, b - 6, 1, 6); R('#1a1a1a', -3, b - 1, 2, 1); R(P, -1, b - 6, 5, 1); R('#1a1a1a', 4, b - 6, 1, 1); top -= 1;
-  } else if (act === 'sit' && w.look % 2) { // cross-legged on the floor
-    top = b - 9; R(P, -3, b - 2, 6, 2); R('#1a1a1a', -3, b - 1, 1, 1); R('#1a1a1a', 2, b - 1, 1, 1);
-  } else if (seated) {
-    R('#6b4a3a', -3, b - 4, 4, 1); R('#5a5f6b', -2, b - 3, 1, 3); // stool
-    R(P, -2, b - 6, 4, 2); R(P, 1, b - 4, 1, 3); R('#1a1a1a', 1, b - 1, 2, 1);
-  } else { R(P, -1, b - 6, 2, 6); R(mix(P, '#000000', 0.4), 0, b - 3, 1, 3); R('#1a1a1a', -1, b - 1, 3, 1); }
-  // torso and head
-  R(S, -2, top + 5, 4, 5 - (seated ? 1 : 0)); R(mix(S, '#000000', 0.25), -2, top + 9 - (seated ? 1 : 0), 4, 1);
-  const hx = bend ? 1 : 0;
-  R(K, -2 + hx, top, 4, 4); R('#2a1e18', -2 + hx, top, 4, 1); R('#2a1e18', -2 + hx, top + 1, 1, 2); R('#1a1a1a', 1 + hx, top + 2, 1, 1);
-  // arms and tools
-  const sh = top + 5;
-  switch (act) {
-    case 'lift': {
-      const hy = ph ? top - 2 : sh;
-      R(K, -3, hy, 1, sh - hy + 2); R(K, 2, hy, 1, sh - hy + 2);
-      R('#2b2f3a', -6, hy, 12, 1); R('#c94f4f', -7, hy - 1, 1, 3); R('#c94f4f', 6, hy - 1, 1, 3); break; }
-    case 'punch': if (ph) R(K, 2, sh + 1, 4, 1); else R(K, 2, sh + 1, 1, 2); R('#c94f4f', ph ? 6 : 3, sh, 2, 2); break;
-    case 'kick': R(K, -3, sh, 1, 2); R(K, 2, sh - 1, 1, 2); break;
-    case 'type': R(K, 2, sh + 2, 2 + ph, 1); break;
-    case 'knead': R(K, 2, sh + 2 + ph, 3, 1); R('#e8d6a0', 4, sh + 3 + ph, 3, 1); break;
-    case 'toss': { const dy = [0, -3, -5, -3][Math.floor(t * 6) % 4]; R(K, 1, top - 1, 1, 6); R('#e8c07a', -1, top - 3 + dy, 5, 1); R('#c94f4f', 1, top - 3 + dy, 1, 1); break; }
-    case 'chop': case 'slice':
-      if (ph) { R(K, 2, sh - 4, 1, 5); R('#c9c2ae', 2, sh - 6, 3, 2); } else { R(K, 2, sh + 1, 3, 1); R('#c9c2ae', 5, sh, 2, 2); }
-      R('#e8e2d0', -2, sh, 4, 4); break; // apron
-    case 'slurp': case 'eat':
-      if (ph) { R(K, 2, sh, 1, 2); R('#e8e2d0', 2, top + 3, 3, 2); } else { R(K, 2, sh + 2, 2, 1); R('#e8e2d0', 4, sh + 2, 3, 2); }
-      if (act === 'slurp' && !ph) { R('rgba(255,255,255,.5)', 5, sh - 1, 1, 2); } break;
-    case 'scoop': R(K, 2, sh + 2, 1, 3); R('#9aa0b0', 2, sh + 5, 2, 1); break;
-    case 'chat': R(K, 2, sh + 1, 1, 3); if (ph) { R('#ffffff', 2, top - 6, 6, 4); R('#ffffff', 3, top - 2, 1, 1); R('#1a1a1a', 3, top - 5, 1, 1); R('#1a1a1a', 5, top - 5, 1, 1); } break;
-    case 'sit': R(K, -3, sh + 2, 1, 2); R(K, 2, sh + 2, 1, 2); if (ph && w.look % 2) R('rgba(255,255,255,.5)', 0, top - 3, 1, 1); break;
-    case 'browse': R(K, 2, sh + (ph ? 0 : 2), 1, ph ? 2 : 2); if (ph) R(K, 3, sh, 1, 1); break;
-    default: R(K, -1, sh + 1, 1, 3);
-  }
+  if (seat) { P('#6b4a3a', -4, -7, 7, 2); P('#4a3428', -4, -6, 7, 1); P('#5a5f6b', -1, -5, 2, 5); }
+  // back limbs
+  arm([sh[0] - 1, sh[1] + 2], bh, false);
+  if (cross) { P(Pn, -5, -4, 11, 4); P(Pd, -5, -1, 11, 1); P(shoe, -6, -2, 2, 2); P(shoe, 5, -2, 2, 2); }
+  else leg([hip[0] - 1, hip[1]], bk, bf, Pd);
+  // torso
+  for (let y = sh[1]; y <= hip[1]; y++) { const k = (y - sh[1]) / Math.max(1, hip[1] - sh[1]), cx = Math.round(sh[0] + (hip[0] - sh[0]) * k); P(S, cx + TL, y, TW, 1); P(Sd, cx + TL, y, 2, 1); }
+  P(mix(S, '#ffffff', 0.3), sh[0] - 2, sh[1], 5, 1);
+  P(Pn, hip[0] + TL, hip[1] - 1, TW, 2); P(Pd, hip[0] + TL, hip[1], TW, 1);
+  // kit on the torso
+  const T = (c, x, y, ww, hh) => P(c, sh[0] + x, sh[1] + y, ww, hh);
+  const apron = (c, stripe) => { T(c, 0, 3, 4, hip[1] - sh[1] + 3); T(c, 1, 0, 2, 3); if (stripe) for (let y = 4; y < hip[1] - sh[1] + 3; y += 2) T(stripe, 0, y, 4, 1); T(mix(c, '#000000', 0.15), -4, 4, 4, 1); };
+  if (role === 'chef' || role === 'pizza') apron('#ffffff');
+  if (role === 'butcher') apron('#ffffff', '#c94f4f');
+  if (role === 'fish') apron('#e7c34a');
+  if (role === 'deli' || role === 'noodle') apron('#2b2f3a');
+  if (role === 'nut') apron('#3fae7a');
+  if (role === 'suit') { T('#c94f4f', 2, 1, 1, 6); T('#ffffff', 1, 0, 3, 1); T('#2b3550', -4, 0, 3, hip[1] - sh[1]); }
+  if (role === 'gi') { T(K, 1, 0, 2, 2); T('#d9d4c4', 0, 2, 1, 4); T('#1a1a1a', -4, hip[1] - sh[1] - 2, 8, 2); T('#1a1a1a', 3, hip[1] - sh[1], 1, 3); }
+  if (role === 'gym' || role === 'boxer') { T(SHIRT[w.look], -3, 1, 6, hip[1] - sh[1] - 1); T(K, -3, 0, 6, 1); }
+  // front limbs
+  if (!cross) leg([hip[0] + 1, hip[1]], fk, ff, Pn);
+  head();
+  if (tool === 'bag') { P('#b08a5a', bh[0] - 3, bh[1], 5, 5); P('#8a6a40', bh[0] - 3, bh[1], 5, 1); P('#5a4630', bh[0] - 2, bh[1] - 1, 1, 1); }
+  if (tool === 'case') { P('#5a3a2a', bh[0] - 3, bh[1] + 1, 7, 5); P('#7a5a40', bh[0] - 3, bh[1] + 1, 7, 1); P('#d9b45a', bh[0], bh[1] + 3, 1, 1); }
+  arm([sh[0] + 1, sh[1] + 2], fh, true);
+  // tools follow the front hand
+  const [hx2, hy2] = fh.map(Math.round);
+  if (tool === 'bar') { P('#3a3f55', -12, hy2 - 1, 24, 2); P('#c94f4f', -14, hy2 - 4, 3, 8); P('#c94f4f', 11, hy2 - 4, 3, 8); P('#e06a6a', -14, hy2 - 4, 3, 1); P('#e06a6a', 11, hy2 - 4, 3, 1); }
+  if (tool === 'gloves') { P('#d64545', hx2 - 1, hy2 - 2, 4, 4); P('#ff8a7a', hx2, hy2 - 2, 2, 1); P('#b03535', bh[0] - 1, bh[1] - 2, 4, 4); }
+  if (tool === 'knife') { if (ph) { P('#c9ced8', hx2 - 1, hy2 - 6, 5, 4); P('#6b4a3a', hx2, hy2 - 2, 1, 2); } else { P('#c9ced8', hx2 + 1, hy2 - 1, 5, 2); P('#6b4a3a', hx2 - 1, hy2 - 1, 2, 2); } }
+  if (tool === 'dough') { P('#efdcaa', 6, hy2, 7, 3); P('#d9c590', 6, hy2 + 2, 7, 1); }
+  if (tool === 'pizza') { const dy = [0, -3, -5, -3][anim]; P('#e8c07a', -2, hy2 - 5 + dy, 11, 2); P('#c94f4f', 0, hy2 - 5 + dy, 2, 1); P('#c94f4f', 5, hy2 - 5 + dy, 2, 1); P('#f0d080', 2, hy2 - 5 + dy, 2, 1); }
+  if (tool === 'scoop') P('#9aa0b0', hx2, hy2, 3, 2);
+  if (tool === 'slurp' || tool === 'eat') { P('#e8e2d0', hx2 - 1, hy2 - 2, 6, 3); P('#3f7fe0', hx2 - 1, hy2 - 1, 6, 1); if (tool === 'slurp') { P('#8a5a3a', hx2 + 2, hy2 - 7, 1, 5); P('#8a5a3a', hx2 + 4, hy2 - 7, 1, 5); if (ph) P('rgba(255,255,255,.6)', hx2 + 3, hy2 - 10, 1, 2); } }
+  if (bubble) { const bx = sh[0] + 3, by = sh[1] - 21; P('#ffffff', bx, by, 13, 8); P('#ffffff', bx + 2, by + 8, 2, 2); P('#e7c34a', bx + 2, by + 3, 2, 2); P('#d64545', bx + 5, by + 3, 3, 2); P('#3fae7a', bx + 9, by + 3, 2, 2); }
 }
