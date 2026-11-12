@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { seedKeys, open, mockModels, photoEstimate, geminiBody, NASI } from './helpers.js';
 
-// `floors` past days ending yesterday. Every seventh is a low day (500 kcal), the rest are on target.
+// `floors` past days ending yesterday. A Saturday in every other calendar week is a low day (500 kcal), the rest are on target.
+// Tying the low day to the weekday keeps both hit and missed weeks whatever day the suite runs.
 async function seed(page, floors) {
   await page.evaluate((floors) => new Promise((res) => {
     const r = indexedDB.open('countmakan', 1);
@@ -11,7 +12,7 @@ async function seed(page, floors) {
       for (let k = 0; k < floors; k++) {
         const d = new Date(); d.setDate(d.getDate() - 1 - k);
         const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const miss = k % 7 === 6;
+        const miss = d.getDay() === 6 && Math.floor(d.getTime() / 604800000) % 2 === 0;
         const [protein, carbs, fat] = miss ? [10, 20, 10] : mix[k % mix.length];
         for (let n = 0; n < 1 + (k % 3); n++) {
           t.objectStore('entries').put({ id: `s${k}-${n}`, day, ts: d.toISOString(), source: 'text', items: [{ name: 'Meal', grams: 300, kcal: (miss ? 500 : 1800) / (1 + (k % 3)), protein: protein / (1 + (k % 3)), carbs: carbs / (1 + (k % 3)), fat: fat / (1 + (k % 3)), confidence: 0.9 }] });
