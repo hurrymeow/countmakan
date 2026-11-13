@@ -281,3 +281,54 @@ test('item note is collapsed, editable and saved', async ({ page }) => {
   await page.locator('.item-note summary').first().click();
   await expect(page.locator('#item-0-detail')).toHaveValue('with egg');
 });
+
+test('backup reminder shows after 30 days, Later hides it for a week, Save a copy clears it', async ({ page }) => {
+  const ago = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
+  const dayOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await open(page);
+  await page.evaluate(([day, last]) => new Promise((res) => {
+    localStorage.setItem('countmakan.lastBackup', last);
+    const r = indexedDB.open('countmakan', 1);
+    r.onsuccess = () => {
+      const t = r.result.transaction('entries', 'readwrite');
+      t.objectStore('entries').put({ id: 'old', day, ts: new Date(day).toISOString(), source: 'text', items: [{ name: 'Meal', grams: 300, kcal: 500, protein: 20, carbs: 50, fat: 20, confidence: 0.9 }] });
+      t.oncomplete = () => { r.result.close(); res(); };
+    };
+  }), [dayOf(ago(40)), ago(40).toISOString()]);
+  await open(page);
+  const card = page.locator('#backup-nudge');
+  await expect(card).toBeVisible();
+  await expect(card.getByText('Save a copy of your meals')).toBeVisible();
+
+  await card.getByRole('button', { name: 'Later' }).click();
+  await expect(card).toBeHidden();
+  expect(Number(await page.evaluate(() => localStorage.getItem('countmakan.backupSnooze')))).toBeGreaterThan(Date.now() + 6 * 86400000);
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await expect(card).toBeHidden();
+
+  await page.evaluate(() => localStorage.removeItem('countmakan.backupSnooze'));
+  await page.reload();
+  await page.waitForSelector('body[data-ready]', { state: 'attached' });
+  await expect(card).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent('download'), card.getByRole('button', { name: 'Save a copy' }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^makan-meter-.*\.json$/);
+  await expect(card).toBeHidden();
+  expect(Date.now() - new Date(await page.evaluate(() => localStorage.getItem('countmakan.lastBackup'))).getTime()).toBeLessThan(60000);
+});
+
+test('backup reminder stays hidden after a recent copy', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => new Promise((res) => {
+    localStorage.setItem('countmakan.lastBackup', new Date().toISOString());
+    const r = indexedDB.open('countmakan', 1);
+    r.onsuccess = () => {
+      const t = r.result.transaction('entries', 'readwrite');
+      t.objectStore('entries').put({ id: 'new', day: new Date().toLocaleDateString('en-CA'), ts: new Date().toISOString(), source: 'text', items: [{ name: 'Meal', grams: 300, kcal: 500, protein: 20, carbs: 50, fat: 20, confidence: 0.9 }] });
+      t.oncomplete = () => { r.result.close(); res(); };
+    };
+  }));
+  await open(page);
+  await expect(page.locator('#today-list .entry')).toHaveCount(1);
+  await expect(page.locator('#backup-nudge')).toBeHidden();
+});
