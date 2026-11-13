@@ -80,6 +80,25 @@ export function weekScores(entries, target, today) {
   return out;
 }
 
+// Every week with meals, newest first, for History. Same rule as weekScores, plus the running week as 'sofar'.
+// Returns [{ start, end, days: [day, newest first], avg, status: 'landed'|'missed'|'sofar' }]. avg is null with no logged kcal days.
+export function weekGroups(entries, target, today) {
+  const kcal = dayKcal(entries);
+  const now = weekStart(today);
+  const weeks = new Map();
+  for (const e of entries) {
+    const w = weekStart(e.day);
+    const g = weeks.get(w) || weeks.set(w, new Set()).get(w);
+    g.add(e.day);
+  }
+  return [...weeks.keys()].sort().reverse().map((start) => {
+    const logged = [...weeks.get(start)].filter((d) => kcal.has(d));
+    const avg = logged.length ? logged.reduce((a, d) => a + kcal.get(d), 0) / logged.length : null;
+    const status = start >= now ? 'sofar' : avg !== null && onTarget(avg, target) ? 'landed' : 'missed';
+    return { start, end: addDays(start, 6), days: [...weeks.get(start)].sort().reverse(), avg, status };
+  });
+}
+
 // What today can hold so the running week lands on the target average, assuming every remaining day is logged.
 // Clamped so it never suggests starving or a binge. `onTrack` is the budget within the goal band of the target.
 export function weekBudget(entries, target, today) {
