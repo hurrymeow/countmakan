@@ -219,3 +219,18 @@ test('stations: one per prop, shared by shop actions, and the activity loop is 1
   assert.deepEqual([...new Set(calm.map((s) => s.shop))].sort(), ['noodle', 'sport']); // residents dress for the shop they stand in
   assert.deepEqual(calm.slice(0, 2).map((s) => s.act).sort(), ['lift', 'run']);
 });
+
+test('weekGroups: landed, missed, so far, and a week across a month boundary', async () => {
+  const { weekGroups } = await import('../js/tower.js');
+  const es = [
+    meal('2026-10-28', 1800, 0, 0, 0), meal('2026-11-01', 1900, 0, 0, 0), // Mon 26 Oct to Sun 1 Nov: landed
+    meal('2026-11-03', 900, 0, 0, 0), // week of 2 Nov: missed
+    meal('2026-11-10', 1000, 0, 0, 0), // running week: so far
+    { day: '2026-11-11', items: [] },
+  ];
+  const g = weekGroups(es, 1800, '2026-11-12');
+  assert.deepEqual(g.map((w) => [w.start, w.end, w.status]), [['2026-11-09', '2026-11-15', 'sofar'], ['2026-11-02', '2026-11-08', 'missed'], ['2026-10-26', '2026-11-01', 'landed']]);
+  assert.equal(g[2].avg, 1850);
+  assert.deepEqual(g[2].days, ['2026-11-01', '2026-10-28']);
+  assert.equal(g[0].avg, 1000);
+});
