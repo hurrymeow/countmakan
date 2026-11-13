@@ -103,6 +103,7 @@ export function showStep(step) {
   $('#summary').hidden = !home;
   $('#health-sync').hidden = !home || !showSyncCard();
   $('#meals').hidden = !home;
+  renderBackupNudge();
   $('#not-set-up').hidden = hasKeys();
   $('#welcome').hidden = !hasKeys() || state.entries.length > 0 || step !== 'add';
 }
@@ -884,6 +885,36 @@ function onExport() {
   setStatus($('#io-status'), `Saved a copy of ${data.entries.length} meals.`);
   localStorage.setItem('countmakan.lastBackup', new Date().toISOString());
   renderRowStatus();
+  renderBackupNudge();
+}
+
+// ---------- Backup reminder ----------
+// Due after 30 days without a copy. Before any copy, due once the oldest meal is 7 days old.
+// "Later" snoozes for 7 days. Storage can be blocked, so every access is guarded.
+const BACKUP_SNOOZE = 'countmakan.backupSnooze';
+const DAY_MS = 86400000;
+function storeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function storeSet(key, value) { try { localStorage.setItem(key, value); } catch { /* storage blocked */ } }
+function backupDue() {
+  if (!state.entries.length) return false;
+  if (Number(storeGet(BACKUP_SNOOZE)) > Date.now()) return false;
+  const last = storeGet('countmakan.lastBackup');
+  if (last) return Date.now() - new Date(last).getTime() > 30 * DAY_MS;
+  const oldest = state.entries.reduce((m, e) => (e.day < m ? e.day : m), state.entries[0].day);
+  return (Date.parse(localDay(new Date())) - Date.parse(oldest)) / DAY_MS >= 7;
+}
+function renderBackupNudge() {
+  const card = $('#backup-nudge');
+  card.hidden = state.step !== 'add' || !backupDue();
+  if (card.hidden) return;
+  const last = storeGet('countmakan.lastBackup');
+  $('#backup-nudge-text').textContent = last
+    ? `Your meals are only on this phone. Last copy: ${new Date(last).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.`
+    : "Your meals are only on this phone. You haven't saved a copy yet.";
+}
+function onBackupLater() {
+  storeSet(BACKUP_SNOOZE, String(Date.now() + 7 * DAY_MS));
+  renderBackupNudge();
 }
 
 // Settings rows show where each one stands. Amber means it needs doing.
@@ -1016,6 +1047,8 @@ async function boot() {
   $('#p-height').addEventListener('input', updateGoalHint);
   renderSuggestForm();
   $('#export').addEventListener('click', onExport);
+  $('#backup-save').addEventListener('click', onExport);
+  $('#backup-later').addEventListener('click', onBackupLater);
   $('#import').addEventListener('change', onImport);
   $('#install-yes').addEventListener('click', onInstall);
   renderInstall();
