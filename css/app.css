@@ -504,3 +504,12 @@ body:has(.sheet[open]) { overflow: hidden; }
 .more-nutrients summary::after { content: "›"; margin-left: var(--s-1); transition: transform .15s; }
 .more-nutrients[open] summary::after { transform: rotate(90deg); }
 .more-nutrients .bars { margin-top: var(--s-1); }
+
+/* History: one folded section per Mon-Sun week. */
+.week { margin-top: var(--s-3); }
+.week > summary { display: flex; align-items: center; gap: var(--s-3); min-height: var(--control-h); padding: var(--s-2) var(--s-1); cursor: pointer; font-weight: 600; }
+.week-range { flex: 1; }
+.week-avg { color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 500; }
+.week-status { font-weight: 600; padding: 2px var(--s-3); border-radius: var(--r-pill); color: var(--text-2); background: var(--surface-2); }
+.week-status.landed { color: var(--green); background: rgb(34 197 94 / .14); }
+.week-days > .card:first-child { margin-top: 0; }
